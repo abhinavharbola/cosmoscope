@@ -1,0 +1,190 @@
+:root {
+  --bg: #04060d;
+  --panel: rgba(12, 16, 30, 0.78);
+  --line: rgba(140, 170, 255, 0.22);
+  --text: #dfe6f5;
+  --dim: #8a96b4;
+  --accent: #ffb43c;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.label {
+  position: absolute;
+  transform: translate(-50%, -140%);
+  font-size: 12px;
+  color: var(--text);
+  text-shadow: 0 0 4px #000;
+  white-space: nowrap;
+}
+
+#hud {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#hud-date {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud-scale, #hud-mode, #hud-focus { color: var(--dim); }
+
+#bodies {
+  position: fixed;
+  top: 150px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+
+#bodies button {
+  text-align: left;
+  min-width: 120px;
+}
+
+button {
+  background: rgba(40, 52, 90, 0.55);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button:hover { background: rgba(70, 90, 150, 0.6); }
+button.active { border-color: var(--accent); color: var(--accent); }
+button.accent { border-color: var(--accent); color: var(--accent); }
+
+#info {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  width: 320px;
+  max-height: 55vh;
+  overflow: auto;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+}
+
+#info h2 { margin: 0 0 2px; font-size: 20px; }
+#info-type { color: var(--dim); margin-bottom: 8px; }
+#info-table { width: 100%; border-collapse: collapse; }
+#info-table td { padding: 3px 0; border-bottom: 1px solid var(--line); }
+#info-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#info-facts { margin: 10px 0 6px; }
+#info-light { margin: 6px 0; color: var(--accent); }
+.src { color: var(--dim); font-size: 11px; margin: 6px 0 0; }
+.src a { color: var(--dim); }
+
+#live {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  width: 320px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+}
+
+#live h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+#live img { width: 100%; border-radius: 6px; margin: 6px 0; display: block; }
+#live .item { margin: 4px 0; }
+#live .item b { color: var(--text); }
+#live .dim { color: var(--dim); }
+.keyrow { display: flex; gap: 6px; margin-top: 8px; }
+.keyrow input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+#controls {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 360px));
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+
+#controls .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#scale { flex: 1; min-width: 140px; }
+#scale-label { min-width: 110px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+#light-log {
+  font-size: 12px;
+  color: var(--dim);
+  max-height: 84px;
+  overflow: auto;
+}
+
+#light-log div { margin: 1px 0; }
+#light-log b { color: var(--accent); font-weight: 600; }
+
+@media (max-width: 1100px) {
+  #controls { width: calc(100vw - 28px); bottom: 190px; }
+  #live { width: calc(100vw - 28px); }
+  #info { width: 260px; }
+}

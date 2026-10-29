@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cosmos</title>
+<link rel="stylesheet" href="src/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "astronomy-engine": "https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/+esm"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="labels"></div>
+
+<header id="hud">
+  <div id="hud-date">--</div>
+  <div id="hud-scale">--</div>
+  <div id="hud-mode">--</div>
+  <div id="hud-focus">--</div>
+</header>
+
+<nav id="bodies"></nav>
+
+<aside id="info" hidden>
+  <h2 id="info-name"></h2>
+  <div id="info-type"></div>
+  <table id="info-table"></table>
+  <p id="info-facts"></p>
+  <p id="info-light"></p>
+  <p class="src" id="info-src"></p>
+</aside>
+
+<aside id="live">
+  <h3>Today in space</h3>
+  <div id="live-body">Loading NASA feeds...</div>
+  <div class="keyrow">
+    <input id="api-key" placeholder="NASA API key (optional)" autocomplete="off">
+    <button id="api-save">Save</button>
+  </div>
+</aside>
+
+<section id="controls">
+  <div class="row">
+    <button id="btn-play">Pause</button>
+    <button id="btn-reverse">Reverse</button>
+    <button id="btn-now">Now</button>
+    <input id="scale" type="range" min="0" max="1000" value="500">
+    <span id="scale-label"></span>
+  </div>
+  <div class="row" id="presets"></div>
+  <div class="row">
+    <button id="btn-sizes">Sizes: exaggerated</button>
+    <button id="btn-orbits">Orbits: on</button>
+    <button id="btn-labels">Labels: on</button>
+    <button id="btn-overview">Overview</button>
+    <button id="btn-pulse" class="accent">Emit light pulse</button>
+  </div>
+  <div id="light-log"></div>
+</section>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
