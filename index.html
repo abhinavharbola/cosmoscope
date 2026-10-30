@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cosmos</title>
+<meta name="description" content="A solar system you can scrub through time, driven by real ephemerides and NASA data.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305070d'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23f2b04a'/%3E%3Cellipse cx='16' cy='16' rx='13' ry='4.5' fill='none' stroke='%23e9e4d8' stroke-width='1.4' transform='rotate(-20 16 16)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="src/style.css">
 <script type="importmap">
 {
@@ -18,52 +23,120 @@
 <body>
 <canvas id="stage"></canvas>
 <div id="labels"></div>
+<div id="vignette"></div>
 
-<header id="hud">
-  <div id="hud-date">--</div>
-  <div id="hud-scale">--</div>
-  <div id="hud-mode">--</div>
-  <div id="hud-focus">--</div>
-</header>
+<div id="left">
+  <header id="mast">
+    <button class="wordmark" id="wordmark" title="Whole system (Esc)">Cosmos</button>
+    <button id="clock" class="clock" title="Switch between local time and UTC">
+      <span id="clock-date"></span>
+      <span class="clock-line"><span id="clock-time"></span><span id="clock-zone"></span></span>
+    </button>
+    <div id="clock-state" class="state"></div>
+    <div class="cap almanac-title" id="almanac-title">The sky now</div>
+    <dl id="almanac"></dl>
+  </header>
+  <nav id="index" aria-label="Bodies"></nav>
+</div>
 
-<nav id="bodies"></nav>
-
-<aside id="info" hidden>
-  <h2 id="info-name"></h2>
-  <div id="info-type"></div>
-  <table id="info-table"></table>
-  <p id="info-facts"></p>
-  <p id="info-light"></p>
-  <p class="src" id="info-src"></p>
-</aside>
-
-<aside id="live">
-  <h3>Today in space</h3>
-  <div id="live-body">Loading NASA feeds...</div>
+<button id="dispatch-toggle" class="ghost" aria-expanded="false">NASA dispatch <span id="dispatch-badge" class="badge"></span></button>
+<aside id="dispatch" hidden>
+  <div id="dispatch-body"></div>
   <div class="keyrow">
-    <input id="api-key" placeholder="NASA API key (optional)" autocomplete="off">
-    <button id="api-save">Save</button>
+    <input id="api-key" placeholder="NASA API key" autocomplete="off" spellcheck="false">
+    <button id="api-save" class="ghost">Save</button>
   </div>
 </aside>
 
-<section id="controls">
-  <div class="row">
-    <button id="btn-play">Pause</button>
-    <button id="btn-reverse">Reverse</button>
-    <button id="btn-now">Now</button>
-    <input id="scale" type="range" min="0" max="1000" value="500">
-    <span id="scale-label"></span>
+<aside id="plate" hidden>
+  <h2 id="plate-name"></h2>
+  <div id="plate-type" class="cap"></div>
+  <div class="meter-wrap">
+    <div class="meter"><span id="meter-fill"></span></div>
+    <div id="meter-label" class="mono dim"></div>
   </div>
-  <div class="row" id="presets"></div>
-  <div class="row">
-    <button id="btn-sizes">Sizes: exaggerated</button>
-    <button id="btn-orbits">Orbits: on</button>
-    <button id="btn-labels">Labels: on</button>
-    <button id="btn-overview">Overview</button>
-    <button id="btn-pulse" class="accent">Emit light pulse</button>
+  <table id="plate-table"></table>
+  <button id="plate-more" class="ghost">More data</button>
+  <p id="plate-facts"></p>
+  <p id="plate-light" class="light"></p>
+  <p id="plate-src" class="src"></p>
+</aside>
+
+<section id="dock">
+  <div id="ruler" hidden>
+    <div class="ruler-head">
+      <span class="cap">Light pulse</span>
+      <span id="ruler-time" class="mono"></span>
+      <span id="ruler-last" class="mono dim"></span>
+      <span id="ruler-scale" class="mono dim"></span>
+      <button id="ruler-close" class="ghost">Stop</button>
+    </div>
+    <div id="ruler-track"><div id="ruler-fill"></div></div>
   </div>
-  <div id="light-log"></div>
+
+  <div class="dock-row">
+    <div class="transport">
+      <button id="btn-reverse" class="icon" title="Reverse time (R)" aria-label="Reverse time"></button>
+      <button id="btn-play" class="icon" title="Play or pause (Space)" aria-label="Play or pause"></button>
+      <button id="btn-now" class="ghost" title="Return to the present (N)">Now</button>
+    </div>
+    <div class="rate">
+      <div id="rate-readout"></div>
+      <input id="scale" type="range" min="0" max="1000" value="500" aria-label="Time scale">
+      <div id="presets"></div>
+    </div>
+    <div class="tools">
+      <div class="menu">
+        <button id="btn-jump" class="ghost">Jump</button>
+        <div id="jump" class="pop" hidden>
+          <label class="datebox"><span class="cap">Date</span><input id="date-input" type="date" min="1801-01-01" max="2198-12-31"></label>
+          <div class="pop-rule"></div>
+          <div id="moments"></div>
+        </div>
+      </div>
+      <div class="menu">
+        <button id="btn-view" class="ghost">View</button>
+        <div id="view" class="pop" hidden>
+          <button id="btn-sizes" class="pop-item" title="True-scale sizes (T)"></button>
+          <button id="btn-orbits" class="pop-item" title="Orbit trails (V)"></button>
+          <button id="btn-labels" class="pop-item" title="Labels (K)"></button>
+          <div class="pop-rule"></div>
+          <button id="btn-help" class="pop-item"><span>Keyboard shortcuts</span><b>?</b></button>
+        </div>
+      </div>
+      <button id="btn-pulse" class="ghost accent" title="Send a light pulse (L)">Light pulse</button>
+    </div>
+  </div>
 </section>
+
+<div id="help" hidden>
+  <div class="help-card">
+    <h3>Keyboard</h3>
+    <dl>
+      <dt>0 to 9</dt><dd>Sun, then Mercury to Pluto</dd>
+      <dt>M</dt><dd>Moon</dd>
+      <dt>O or Esc</dt><dd>Whole system</dd>
+      <dt>I</dt><dd>Inner planets</dd>
+      <dt>Space</dt><dd>Play or pause</dd>
+      <dt>R</dt><dd>Reverse time</dd>
+      <dt>[ and ]</dt><dd>Slower, faster</dd>
+      <dt>N</dt><dd>Jump to now</dd>
+      <dt>L</dt><dd>Send a light pulse</dd>
+      <dt>T</dt><dd>True-scale sizes</dd>
+      <dt>V</dt><dd>Orbit trails</dd>
+      <dt>K</dt><dd>Labels</dd>
+    </dl>
+    <p class="dim">Click a body or its label to fly to it. Drag to orbit, scroll to zoom.</p>
+  </div>
+</div>
+
+<div id="intro">
+  <div class="intro-mark">Cosmos</div>
+  <div id="intro-line" class="mono">Computing positions</div>
+  <div class="intro-bar"><span id="intro-fill"></span></div>
+</div>
+
+<div id="fatal" hidden></div>
 
 <script type="module" src="src/main.js"></script>
 </body>
