@@ -1,14 +1,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { SUN, PLANETS, MOON, AU_KM, C_AU_S } from "./data.js";
-import { helioPosition, moonOffset, orbitSamples, distanceAU } from "./ephemeris.js";
-import { proceduralTexture, sunTexture, ringTexture, glowTexture } from "./textures.js";
+import { SUN, PLANETS, MOON, AU_KM, C_AU_S, POLES } from "./data.js";
+import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
+import { buildMaps, sunMap, ringTexture, glowTexture, loadOverrides } from "./textures.js";
+import { createSky } from "./sky.js";
 
 const ART_BASE = 0.035;
 const MOON_ART_ORBIT = ART_BASE * 5;
-const OVERVIEW_DIST = 70;
+const OVERVIEW_DIST = 85;
 const INNER_DIST = 4.5;
 const PULSE_MAX_AU = 120;
+const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
+const TEXTURE_ORDER = ["Earth", "Sun", "Jupiter", "Saturn", "Mars", "Moon", "Venus", "Mercury", "Neptune", "Uranus", "Pluto"];
 
 export const VIEWS = {
   Overview: { dist: OVERVIEW_DIST },
@@ -23,6 +26,11 @@ function artisticRadius(body) {
 
 function trueRadius(body) {
   return body.radiusKm / AU_KM;
+}
+
+function smoothstep(a, b, x) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 function circleSprite(color) {
@@ -43,7 +51,7 @@ function circleSprite(color) {
 }
 
 function radialRing(inner, outer, tex) {
-  const geo = new THREE.RingGeometry(inner, outer, 160, 1);
+  const geo = new THREE.RingGeometry(inner, outer, 192, 1);
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv;
   for (let i = 0; i < pos.count; i++) {
@@ -56,8 +64,53 @@ function radialRing(inner, outer, tex) {
     transparent: true,
     side: THREE.DoubleSide,
     depthWrite: false,
+    color: 0xe8e8e8,
   });
   return new THREE.Mesh(geo, mat);
+}
+
+function atmosphereMaterial(cfg) {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Vector3(cfg.color[0], cfg.color[1], cfg.color[2]) },
+      uPower: { value: cfg.power },
+      uIntensity: { value: cfg.intensity },
+      uSun: { value: new THREE.Vector3(1, 0, 0) },
+    },
+    vertexShader: `
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      varying vec3 vWN;
+      varying vec3 vWP;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWP = wp.xyz;
+        vWN = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * wp;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uColor;
+      uniform float uPower;
+      uniform float uIntensity;
+      uniform vec3 uSun;
+      varying vec3 vWN;
+      varying vec3 vWP;
+      void main() {
+        #include <logdepthbuf_fragment>
+        vec3 n = normalize(vWN);
+        vec3 v = normalize(cameraPosition - vWP);
+        float f = pow(1.0 - max(dot(n, v), 0.0), uPower);
+        float lit = smoothstep(-0.3, 0.5, dot(n, uSun));
+        gl_FragColor = vec4(uColor * uIntensity, clamp(f * lit, 0.0, 1.0));
+      }
+    `,
+  });
 }
 
 function pulseMaterial() {
@@ -67,7 +120,7 @@ function pulseMaterial() {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
-    uniforms: { uOpacity: { value: 0.6 } },
+    uniforms: { uOpacity: { value: 0.7 } },
     vertexShader: `
       varying vec3 vN;
       varying vec3 vV;
@@ -90,15 +143,31 @@ function pulseMaterial() {
   });
 }
 
-export function createWorld(canvas, labelsEl) {
+function patchNightLights(mat, sunView) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSunView = sunView;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
+      .replace(
+        "#include <emissivemap_fragment>",
+        "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= smoothstep(0.06, -0.14, dot(normalize(vNormal), uSunView));"
+      );
+  };
+}
+
+export function createWorld(canvas, labelsEl, hooks = {}) {
+  const onSelect = hooks.onSelect || (() => {});
+  const onProgress = hooks.onProgress || (() => {});
+
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1e-8, 1e4);
-  const dir = new THREE.Vector3(0.35, 0.5, 0.8).normalize();
-  camera.position.copy(dir.multiplyScalar(OVERVIEW_DIST));
+  camera.position.copy(new THREE.Vector3(0.35, 0.5, 0.8).normalize().multiplyScalar(OVERVIEW_DIST));
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -107,30 +176,15 @@ export function createWorld(canvas, labelsEl) {
   controls.maxDistance = 400;
   controls.minDistance = 0.01;
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
-  const sunLight = new THREE.PointLight(0xffffff, 10, 0, 0);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+  const sunLight = new THREE.PointLight(0xffffff, 7, 0, 0);
   scene.add(sunLight);
 
-  const stars = (() => {
-    const n = 4000;
-    const arr = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-      v.multiplyScalar(3000);
-      arr.set([v.x, v.y, v.z], i * 3);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
-    const p = new THREE.Points(
-      g,
-      new THREE.PointsMaterial({ color: 0xcfd8ff, size: 1.2, sizeAttenuation: false, depthWrite: false })
-    );
-    p.frustumCulled = false;
-    scene.add(p);
-    return p;
-  })();
+  const sky = createSky();
+  scene.add(sky.object);
 
   const bodies = {};
+  const nightUniform = { value: new THREE.Vector3(0, 0, 1) };
   const state = {
     trueScale: false,
     showOrbits: true,
@@ -138,22 +192,42 @@ export function createWorld(canvas, labelsEl) {
     focus: "Overview",
     center: [0, 0, 0],
     trans: null,
+    hoverId: null,
+    orbitBuiltMs: null,
+    earthSunDir: new THREE.Vector3(1, 0, 0),
+    degraded: false,
+    textured: new Set(),
+  };
+  const patched = [];
+
+  renderer.debug.onShaderError = (gl, program, vs, fs) => {
+    if (state.degraded) return;
+    state.degraded = true;
+    console.warn("A custom shader failed to compile. Falling back to plain materials.");
+    patched.forEach((m) => {
+      m.onBeforeCompile = () => {};
+      m.needsUpdate = true;
+    });
+    Object.values(bodies).forEach((b) => {
+      if (b.atmos) b.atmos.visible = false;
+    });
   };
 
   function buildBody(data, isSun = false) {
     const group = new THREE.Group();
     const tilt = new THREE.Group();
-    tilt.rotation.z = (-data.tiltDeg * Math.PI) / 180;
+    const pole = POLES[data.id];
+    if (pole) {
+      const pv = poleVector(pole[0], pole[1]);
+      tilt.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(pv[0], pv[1], pv[2]).normalize());
+    }
     let mesh;
     if (isSun) {
-      mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 48),
-        new THREE.MeshBasicMaterial({ map: sunTexture() })
-      );
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), new THREE.MeshBasicMaterial({ color: 0xffb040 }));
     } else {
       mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 96, 64),
-        new THREE.MeshStandardMaterial({ map: proceduralTexture(data), roughness: 0.95, metalness: 0 })
+        new THREE.SphereGeometry(1, 128, 96),
+        new THREE.MeshStandardMaterial({ color: data.palette[0], roughness: 0.95, metalness: 0 })
       );
     }
     tilt.add(mesh);
@@ -163,28 +237,31 @@ export function createWorld(canvas, labelsEl) {
       tilt.add(rings);
     }
     group.add(tilt);
+
+    let atmos = null;
+    if (data.atmosphere) {
+      atmos = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), atmosphereMaterial(data.atmosphere));
+      atmos.renderOrder = 5;
+      group.add(atmos);
+    }
     scene.add(group);
 
     const marker = circleSprite(isSun ? "#ffd27a" : data.palette[0]);
-    marker.scale.set(0.012, 0.012, 1);
+    marker.scale.set(0.011, 0.011, 1);
     marker.renderOrder = 10;
     scene.add(marker);
 
-    const label = document.createElement("div");
+    const label = document.createElement("button");
     label.className = "label";
     label.textContent = data.name;
+    label.addEventListener("click", () => onSelect(data.id));
     labelsEl.appendChild(label);
 
     let orbit = null;
     if (!isSun && data.id !== "Moon") {
       orbit = new THREE.LineLoop(
         new THREE.BufferGeometry(),
-        new THREE.LineBasicMaterial({
-          color: new THREE.Color(data.palette[0]).lerp(new THREE.Color(0xffffff), 0.35),
-          transparent: true,
-          opacity: 0.5,
-          depthWrite: false,
-        })
+        new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
       );
       orbit.frustumCulled = false;
       scene.add(orbit);
@@ -196,11 +273,21 @@ export function createWorld(canvas, labelsEl) {
       tilt,
       mesh,
       rings,
+      atmos,
+      clouds: null,
       marker,
       label,
       orbit,
+      orbitN: 0,
+      orbitPts: null,
+      orbitCol: null,
+      orbitRGB: orbit ? new THREE.Color(data.palette[0]).lerp(new THREE.Color(0xffffff), 0.3) : null,
       pos: [0, 0, 0],
       radius: 0,
+      sx: 0,
+      sy: 0,
+      sr: 0,
+      shown: false,
     };
     bodies[data.id] = body;
     return body;
@@ -227,7 +314,7 @@ export function createWorld(canvas, labelsEl) {
         return new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
       })
     ),
-    new THREE.LineBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.45, depthWrite: false })
+    new THREE.LineBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.4, depthWrite: false })
   );
   moonOrbit.frustumCulled = false;
   scene.add(moonOrbit);
@@ -244,12 +331,109 @@ export function createWorld(canvas, labelsEl) {
   scene.add(pulse.mesh);
 
   function rebuildOrbits(startMs) {
+    state.orbitBuiltMs = startMs;
     PLANETS.forEach((p) => {
       const b = bodies[p.id];
-      const pts = orbitSamples(p.id, startMs, p.periodDays, p.periodDays > 20000 ? 720 : 360);
+      const period = orbitalPeriodDays(p.id);
+      const n = period > 20000 ? 720 : 360;
+      const pts = orbitSamples(p.id, startMs - (period * 86400000) / 2, period, n);
+      b.orbitN = n;
+      b.orbitPts = pts;
+      b.orbitCol = new Float32Array(n * 4);
       b.orbit.geometry.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+      b.orbit.geometry.setAttribute("color", new THREE.BufferAttribute(b.orbitCol, 4));
       b.orbit.geometry.computeBoundingSphere();
     });
+  }
+
+  function updateTrail(b) {
+    const n = b.orbitN;
+    if (!n) return;
+    const pts = b.orbitPts;
+    const px = b.pos[0];
+    const py = b.pos[1];
+    const pz = b.pos[2];
+    let head = 0;
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      const dx = pts[i * 3] - px;
+      const dy = pts[i * 3 + 1] - py;
+      const dz = pts[i * 3 + 2] - pz;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < best) {
+        best = d;
+        head = i;
+      }
+    }
+    const col = b.orbitCol;
+    const c = b.orbitRGB;
+    for (let i = 0; i < n; i++) {
+      const behind = ((head - i + n) % n) / n;
+      const a = 0.07 + 0.8 * Math.pow(1 - behind, 3.4);
+      col[i * 4] = c.r;
+      col[i * 4 + 1] = c.g;
+      col[i * 4 + 2] = c.b;
+      col[i * 4 + 3] = a;
+    }
+    b.orbit.geometry.attributes.color.needsUpdate = true;
+  }
+
+  function applyMaps(b, maps) {
+    if (b.data.id === "Sun") {
+      b.mesh.material.map = maps.map;
+      b.mesh.material.color.set(0xffffff);
+      b.mesh.material.needsUpdate = true;
+      return;
+    }
+    const mat = b.mesh.material;
+    mat.map = maps.map || null;
+    mat.color.set(0xffffff);
+    if (maps.bump) {
+      mat.bumpMap = maps.bump;
+      mat.bumpScale = 0.9;
+    }
+    if (maps.rough) {
+      mat.roughnessMap = maps.rough;
+      mat.roughness = 1;
+    }
+    if (maps.lights) {
+      mat.emissiveMap = maps.lights;
+      mat.emissive.set(0xffffff);
+      mat.emissiveIntensity = 1.5;
+      patchNightLights(mat, nightUniform);
+      patched.push(mat);
+    }
+    mat.needsUpdate = true;
+    if (maps.clouds) {
+      const clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(1.012, 96, 64),
+        new THREE.MeshStandardMaterial({ map: maps.clouds, transparent: true, depthWrite: false, roughness: 1 })
+      );
+      b.tilt.add(clouds);
+      b.clouds = clouds;
+    }
+  }
+
+  async function loadTextures() {
+    const overrides = await loadOverrides();
+    const total = TEXTURE_ORDER.length;
+    let done = 0;
+    for (const id of TEXTURE_ORDER) {
+      const b = bodies[id];
+      try {
+        let maps;
+        if (overrides[id] && overrides[id].map) {
+          maps = overrides[id];
+          state.textured.add(id);
+        } else if (id === "Sun") maps = { map: await sunMap() };
+        else maps = await buildMaps(b.data);
+        applyMaps(b, maps);
+      } catch (err) {
+        console.warn(`Texture for ${id} failed`, err);
+      }
+      done += 1;
+      onProgress(done, total, id);
+    }
   }
 
   function displayRadius(data) {
@@ -267,19 +451,15 @@ export function createWorld(canvas, labelsEl) {
     state.focus = id;
     const fromDist = camera.position.length();
     state.trans = { from: state.center.slice(), t0: performance.now(), dur: 2200, fromDist, id };
-    if (!VIEWS[id]) {
-      const r = displayRadius(bodies[id].data);
-      controls.minDistance = r * 1.15;
-    } else {
-      controls.minDistance = 0.01;
-    }
+    controls.minDistance = VIEWS[id] ? 0.01 : displayRadius(bodies[id].data) * 1.15;
   }
 
   function update(simMs, timeScale, nowMs) {
-    const sunB = bodies.Sun;
+    if (state.orbitBuiltMs === null || Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs);
+
     const earth = helioPosition("Earth", simMs);
     for (const p of PLANETS) bodies[p.id].pos = helioPosition(p.id, simMs);
-    sunB.pos = [0, 0, 0];
+    bodies.Sun.pos = [0, 0, 0];
 
     const moonVec = moonOffset(simMs);
     const moonLen = Math.hypot(moonVec[0], moonVec[1], moonVec[2]);
@@ -290,8 +470,7 @@ export function createWorld(canvas, labelsEl) {
 
     for (const id of Object.keys(bodies)) bodies[id].radius = displayRadius(bodies[id].data);
 
-    let targetPos = [0, 0, 0];
-    if (!VIEWS[state.focus]) targetPos = bodies[state.focus].pos;
+    const targetPos = VIEWS[state.focus] ? [0, 0, 0] : bodies[state.focus].pos;
 
     if (state.trans) {
       const t = Math.min(1, (nowMs - state.trans.t0) / state.trans.dur);
@@ -312,7 +491,12 @@ export function createWorld(canvas, labelsEl) {
     const c = state.center;
     const halfH = window.innerHeight / 2;
     const tanHalf = Math.tan((camera.fov * Math.PI) / 360);
+    const sunRel = new THREE.Vector3(-c[0], -c[1], -c[2]);
+    const tmp = new THREE.Vector3();
+    const gmst = gmstRad(simMs);
+    const shellScale = state.trueScale ? 1.02 : 1.05;
     const camLen = camera.position.length();
+    const fadeId = state.focus === "Moon" ? "Earth" : state.focus;
 
     for (const id of Object.keys(bodies)) {
       const b = bodies[id];
@@ -325,45 +509,65 @@ export function createWorld(canvas, labelsEl) {
 
       const periodSec = Math.abs(b.data.rotationHours) * 3600;
       const perFrame = (Math.abs(timeScale) * 2 * Math.PI) / periodSec / 60;
-      if (b.data.id === "Moon") {
-        b.mesh.rotation.y = Math.atan2(moonVec[0], -moonVec[2]) + Math.PI;
-      } else if (perFrame < 0.5) {
-        b.mesh.rotation.y = ((simMs / 1000) / periodSec) * 2 * Math.PI;
+      const spinSign = b.data.rotationHours < 0 ? -1 : 1;
+      if (id === "Moon") {
+        b.mesh.rotation.y = Math.atan2(moonVec[2], -moonVec[0]);
+      } else if (perFrame >= 0.5) {
+        b.mesh.rotation.y = (nowMs / 1000) * 0.3 * spinSign;
+      } else if (id === "Earth") {
+        b.mesh.rotation.y = gmst;
       } else {
-        b.mesh.rotation.y = (nowMs / 1000) * 0.3;
+        b.mesh.rotation.y = spinSign * ((simMs / 1000) / periodSec) * 2 * Math.PI;
       }
+      if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y * 0.03 + (nowMs / 1000) * 0.004;
 
       const camToBody = Math.hypot(camera.position.x - rx, camera.position.y - ry, camera.position.z - rz);
       const px = (b.radius / Math.max(camToBody, 1e-12)) * (halfH / tanHalf);
       b.marker.visible = px < 3;
-      b.mesh.visible = true;
+
+      if (b.atmos) {
+        b.atmos.scale.setScalar(b.radius * shellScale);
+        tmp.set(sunRel.x - rx, sunRel.y - ry, sunRel.z - rz).normalize();
+        b.atmos.material.uniforms.uSun.value.copy(tmp);
+        if (id === "Earth") state.earthSunDir.copy(tmp);
+      }
 
       if (b.orbit) {
         b.orbit.position.set(-c[0], -c[1], -c[2]);
-        b.orbit.visible = state.showOrbits;
+        const fade = id === fadeId ? smoothstep(0.05, 1.5, camLen) : 1;
+        b.orbit.material.opacity = fade;
+        b.orbit.visible = state.showOrbits && fade > 0.01;
+        if (b.orbit.visible) updateTrail(b);
       }
 
-      const v = new THREE.Vector3(rx, ry, rz).project(camera);
-      const visible = state.showLabels && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
-      b.label.style.display = visible ? "block" : "none";
-      if (visible) {
-        b.label.style.left = `${((v.x + 1) / 2) * window.innerWidth}px`;
-        b.label.style.top = `${((1 - v.y) / 2) * window.innerHeight}px`;
+      tmp.set(rx, ry, rz).project(camera);
+      b.sx = ((tmp.x + 1) / 2) * window.innerWidth;
+      b.sy = ((1 - tmp.y) / 2) * window.innerHeight;
+      b.sr = px;
+      const onScreen = tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+      let show = state.showLabels && onScreen;
+      if (id === "Moon" && camToBody > moonDistDisp * 40) show = false;
+      if (state.focus === id && px > 70) show = false;
+      b.shown = show;
+      b.label.style.display = show ? "block" : "none";
+      if (show) {
+        b.label.style.transform = `translate(${b.sx.toFixed(1)}px, ${b.sy.toFixed(1)}px) translate(-50%, calc(-100% - ${Math.min(14 + px * 0.5, 80).toFixed(0)}px))`;
+        b.label.classList.toggle("active", state.focus === id);
+        b.label.classList.toggle("hover", state.hoverId === id);
       }
     }
 
-    const sunRad = bodies.Sun.radius;
     glow.position.copy(bodies.Sun.group.position);
-    glow.scale.setScalar(sunRad * 7);
+    glow.scale.setScalar(bodies.Sun.radius * 7);
     sunLight.position.copy(bodies.Sun.group.position);
 
     moonOrbit.visible = state.showOrbits;
     moonOrbit.position.set(bodies.Earth.pos[0] - c[0], bodies.Earth.pos[1] - c[1], bodies.Earth.pos[2] - c[2]);
     moonOrbit.scale.setScalar(moonDistDisp);
 
-    stars.position.copy(camera.position);
+    sky.follow(camera.position);
 
-    let arrivals = [];
+    const arrivals = [];
     if (pulse.emitMs !== null) {
       const elapsed = (simMs - pulse.emitMs) / 1000;
       if (elapsed < 0 || elapsed * C_AU_S > PULSE_MAX_AU) {
@@ -374,7 +578,6 @@ export function createWorld(canvas, labelsEl) {
         pulse.mesh.visible = true;
         pulse.mesh.position.set(-c[0], -c[1], -c[2]);
         pulse.mesh.scale.setScalar(Math.max(pulse.radius, 1e-9));
-        pulse.mesh.material.uniforms.uOpacity.value = 0.7;
         for (const p of PLANETS) {
           if (pulse.logged.has(p.id)) continue;
           const d = distanceAU(bodies[p.id].pos);
@@ -386,7 +589,7 @@ export function createWorld(canvas, labelsEl) {
       }
     }
 
-    return { arrivals, camLen };
+    return { arrivals, pulseRadius: pulse.emitMs === null ? null : pulse.radius };
   }
 
   function emitPulse(simMs) {
@@ -395,10 +598,48 @@ export function createWorld(canvas, labelsEl) {
     pulse.radius = 0;
   }
 
+  function stopPulse() {
+    pulse.emitMs = null;
+    pulse.mesh.visible = false;
+  }
+
   function setTrueScale(v) {
     state.trueScale = v;
-    if (!VIEWS[state.focus]) controls.minDistance = displayRadius(bodies[state.focus].data) * 1.15;
+    controls.minDistance = VIEWS[state.focus] ? 0.01 : displayRadius(bodies[state.focus].data) * 1.15;
   }
+
+  function pick(x, y) {
+    let best = null;
+    let bestD = Infinity;
+    for (const id of Object.keys(bodies)) {
+      const b = bodies[id];
+      if (!b.shown && id === "Moon") continue;
+      const d = Math.hypot(b.sx - x, b.sy - y);
+      const reach = Math.max(16, b.sr);
+      if (d < reach && d < bestD) {
+        best = id;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  let down = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    down = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) {
+      const id = pick(e.clientX, e.clientY);
+      if (id) onSelect(id);
+    }
+    down = null;
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.buttons) return;
+    state.hoverId = pick(e.clientX, e.clientY);
+    canvas.style.cursor = state.hoverId ? "pointer" : "grab";
+  });
 
   function resize() {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -409,6 +650,8 @@ export function createWorld(canvas, labelsEl) {
 
   function render() {
     controls.update();
+    camera.updateMatrixWorld();
+    nightUniform.value.copy(state.earthSunDir).transformDirection(camera.matrixWorldInverse);
     renderer.render(scene, camera);
   }
 
@@ -421,8 +664,9 @@ export function createWorld(canvas, labelsEl) {
     render,
     setFocus,
     emitPulse,
+    stopPulse,
     setTrueScale,
-    rebuildOrbits,
+    loadTextures,
     pulse,
   };
 }
