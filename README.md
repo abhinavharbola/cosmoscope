@@ -18,7 +18,7 @@ Click a body or its label to fly to it. Drag to orbit, scroll to zoom. Press ? i
 
 - Positions: astronomy-engine, computed locally for 1801 to 2198. The clock wraps outside that range.
 - Pole directions: IAU rotation poles, so axial tilt azimuth and Saturn's ring plane are oriented correctly. Earth's spin uses real sidereal time.
-- Planet facts: NASA NSSDC Planetary Fact Sheet, version of 18 March 2025. Mass, gravity, escape velocity, distance from Sun, inclination, eccentricity, obliquity, temperature, density, moons and rings were checked against that table. Mean radius, rotation period and all Sun values come from the individual fact sheets and were not re-checked.
+- Planet facts: NASA NSSDC Planetary Fact Sheet, version of 18 March 2025. Mass, gravity, escape velocity, distance from Sun, inclination, eccentricity, obliquity, temperature, density, moons and rings were checked against that table. Mean radius, rotation period, Sun values, Saturn ring edges and pole directions were checked against the individual NSSDC fact sheets on 30 and 31 Oct 2026, and are pinned by `npm test` (fixture in `test/fixtures/nssdc.json`).
 - Almanac block: moon phase, illumination, next lunar quarter and next solstice or equinox, all computed locally.
 - NASA dispatch: APOD, NeoWs and DONKI through api.nasa.gov. DEMO_KEY is rate limited, so paste a free key into the panel. Responses are cached for one hour in localStorage.
 - Sky: a procedural Milky Way tilted to the galactic plane and random stars. Not a catalog.
@@ -50,3 +50,11 @@ The pulse expands from the Sun at 299,792.458 km/s of simulated time. Sending it
 - The Moon orbit ring is drawn in the ecliptic plane, not at its 5 degree inclination.
 - Only Saturn's rings are drawn.
 - Exoplanets, nearby stars and a real star catalog are not built yet.
+
+## Tests and diagnostics
+
+`npm install && npm test` runs data, orientation, clock and ephemeris checks. Ephemeris checks need `astronomy-engine` and are skipped without it. Press D in the app for frame rate, GPU name, shader fallback state and texture build time. `npm run textures` writes the procedural maps to `out/textures/` for inspection.
+
+## Hosting
+
+`.github/workflows/pages.yml` publishes the static site to GitHub Pages. To keep a NASA key off the client, deploy `deploy/nasa-proxy-worker.js` as a Cloudflare Worker with secret `NASA_API_KEY` and put its URL in the `nasa-proxy` meta tag of `index.html`.

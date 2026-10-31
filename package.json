@@ -5,6 +5,11 @@
   "type": "module",
   "description": "3D solar system with ephemeris-driven orbits, NASA fact sheet data and live NASA feeds",
   "scripts": {
-    "start": "python3 -m http.server 8000"
+    "start": "python3 -m http.server 8000",
+    "test": "node --test test/*.test.mjs",
+    "textures": "node tools/render-textures.mjs"
+  },
+  "devDependencies": {
+    "astronomy-engine": "2.1.19"
   }
 }
