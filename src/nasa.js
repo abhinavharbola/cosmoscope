@@ -20,6 +20,26 @@ function ymd(d) {
   return d.toISOString().slice(0, 10);
 }
 
+function prune() {
+  try {
+    const cutoff = Date.now() - 2 * 86400000;
+    for (const k of Object.keys(localStorage)) {
+      if (!k.startsWith("nasa_cache_")) continue;
+      let t = 0;
+      try {
+        t = JSON.parse(localStorage.getItem(k)).t;
+      } catch {
+        t = 0;
+      }
+      if (!(t > cutoff)) localStorage.removeItem(k);
+    }
+  } catch {
+    return;
+  }
+}
+
+prune();
+
 async function cached(name, loader) {
   const storeKey = `nasa_cache_${name}`;
   try {
@@ -44,8 +64,16 @@ async function cached(name, loader) {
   }
 }
 
+function proxyBase() {
+  const m = document.querySelector('meta[name="nasa-proxy"]');
+  const v = m && m.getAttribute("content");
+  return v ? v.trim().replace(/\/+$/, "") : "";
+}
+
 async function getJson(path) {
-  const res = await fetch(`${BASE}${path}${path.includes("?") ? "&" : "?"}api_key=${getApiKey()}`);
+  const proxy = proxyBase();
+  const url = proxy ? `${proxy}${path}` : `${BASE}${path}${path.includes("?") ? "&" : "?"}api_key=${getApiKey()}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`NASA API ${res.status}`);
   return res.json();
 }

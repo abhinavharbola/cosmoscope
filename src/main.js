@@ -213,7 +213,7 @@ MOMENTS.forEach((m) => {
   b.innerHTML = `${m.label}<small>${m.iso.slice(0, 10)}</small>`;
   b.addEventListener("click", () => {
     sim.ms = clampMs(Date.parse(m.iso));
-    setScale(m.focus === "Moon" ? 600 : 86400);
+    setScale(m.scale || 86400);
     sim.paused = false;
     sim.direction = 1;
     focusOn(m.focus);
@@ -238,6 +238,29 @@ function toggleOrbits() {
 
 function toggleLabels() {
   world.state.showLabels = !world.state.showLabels;
+}
+
+let diagOn = false;
+
+function renderDiag() {
+  const d = world.diagnostics();
+  const t = d.textureMs;
+  setText(
+    $("diag"),
+    [
+      `${fpsAvg.toFixed(0)} fps`,
+      `${d.calls} draw calls, ${Math.round(d.triangles / 1000)}k triangles`,
+      `GPU: ${d.gpu}`,
+      `Shader fallback: ${d.degraded ? "active" : "no"}`,
+      `Textures: ${t === null ? "building" : `${(t / 1000).toFixed(1)} s`}`,
+    ].join("\n")
+  );
+}
+
+function toggleDiag() {
+  diagOn = !diagOn;
+  $("diag").hidden = !diagOn;
+  if (diagOn) renderDiag();
 }
 
 toggles.sizes.addEventListener("click", toggleSizes);
@@ -500,6 +523,7 @@ window.addEventListener("keydown", (e) => {
   if (lower === "t") return toggleSizes();
   if (lower === "v") return toggleOrbits();
   if (lower === "k") return toggleLabels();
+  if (lower === "d") return toggleDiag();
   if (KEY_MAP[lower]) focusOn(KEY_MAP[lower]);
 });
 
@@ -557,16 +581,19 @@ world
 setTimeout(hideIntro, 25000);
 
 let last = performance.now();
+let fpsAvg = 60;
 let slowTick = 0;
 let hashTick = 0;
 
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const rawDt = (now - last) / 1000;
+  const dt = Math.min(0.1, rawDt);
   last = now;
+  if (rawDt > 0) fpsAvg += (1 / rawDt - fpsAvg) * 0.05;
 
   if (!sim.paused) sim.ms = clampMs(sim.ms + sim.direction * sim.scale * dt * 1000);
 
-  const out = world.update(sim.ms, sim.scale, now);
+  const out = world.update(sim.ms, sim.paused ? 0 : sim.scale, now);
   out.arrivals.forEach((a) => {
     ruler.log(`<b>${a.name}</b> reached after ${formatDuration(a.seconds)}`);
   });
@@ -574,7 +601,7 @@ function frame(now) {
   if (pulseActive) {
     if (out.pulseRadius === null) {
       pulseActive = false;
-      ruler.log("Pulse has left the mapped region");
+      ruler.log(out.pulseEnd === "reversed" ? "Pulse stopped because time ran backwards" : "Pulse has left the mapped region");
     } else {
       const distances = {};
       for (const p of PLANETS) distances[p.id] = distanceAU(world.bodies[p.id].pos);
@@ -590,6 +617,7 @@ function frame(now) {
     renderAlmanac();
     renderIndex();
     updateLive();
+    if (diagOn) renderDiag();
   }
   if (now - hashTick > 1000) {
     hashTick = now;

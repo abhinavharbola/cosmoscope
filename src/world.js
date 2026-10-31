@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { SUN, PLANETS, MOON, AU_KM, C_AU_S, POLES } from "./data.js";
 import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
+import { orbitWindowStart } from "./timeutil.js";
+import { moonSpinAngle } from "./frame.js";
 import { buildMaps, sunMap, ringTexture, glowTexture, loadOverrides } from "./textures.js";
 import { createSky } from "./sky.js";
 
@@ -11,6 +13,7 @@ const OVERVIEW_DIST = 85;
 const INNER_DIST = 4.5;
 const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
+const UP = new THREE.Vector3(0, 1, 0);
 const TEXTURE_ORDER = ["Earth", "Sun", "Jupiter", "Saturn", "Mars", "Moon", "Venus", "Mercury", "Neptune", "Uranus", "Pluto"];
 
 export const VIEWS = {
@@ -150,7 +153,7 @@ function patchNightLights(mat, sunView) {
       .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
       .replace(
         "#include <emissivemap_fragment>",
-        "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= smoothstep(0.06, -0.14, dot(normalize(vNormal), uSunView));"
+        "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 1.0 - smoothstep(-0.14, 0.06, dot(normalize(vNormal), uSunView));"
       );
   };
 }
@@ -197,6 +200,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     earthSunDir: new THREE.Vector3(1, 0, 0),
     degraded: false,
     textured: new Set(),
+    textureMs: null,
   };
   const patched = [];
 
@@ -233,7 +237,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     tilt.add(mesh);
     let rings = null;
     if (data.rings) {
-      rings = radialRing(data.rings.innerKm / data.radiusKm, data.rings.outerKm / data.radiusKm, ringTexture());
+      rings = radialRing(data.rings.innerKm / data.radiusKm, data.rings.outerKm / data.radiusKm, ringTexture(data.rings));
       tilt.add(rings);
     }
     group.add(tilt);
@@ -324,6 +328,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     mesh: new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), pulseMaterial()),
     logged: new Set(),
     radius: 0,
+    end: null,
   };
   pulse.mesh.visible = false;
   pulse.mesh.renderOrder = 20;
@@ -336,7 +341,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const b = bodies[p.id];
       const period = orbitalPeriodDays(p.id);
       const n = period > 20000 ? 720 : 360;
-      const pts = orbitSamples(p.id, startMs - (period * 86400000) / 2, period, n);
+      const pts = orbitSamples(p.id, orbitWindowStart(startMs, period), period, n);
       b.orbitN = n;
       b.orbitPts = pts;
       b.orbitCol = new Float32Array(n * 4);
@@ -415,6 +420,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   async function loadTextures() {
+    const started = performance.now();
     const overrides = await loadOverrides();
     const total = TEXTURE_ORDER.length;
     let done = 0;
@@ -434,6 +440,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       done += 1;
       onProgress(done, total, id);
     }
+    state.textureMs = performance.now() - started;
   }
 
   function displayRadius(data) {
@@ -509,9 +516,9 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
       const periodSec = Math.abs(b.data.rotationHours) * 3600;
       const perFrame = (Math.abs(timeScale) * 2 * Math.PI) / periodSec / 60;
-      const spinSign = b.data.rotationHours < 0 ? -1 : 1;
+      const spinSign = b.data.spinSign ?? 1;
       if (id === "Moon") {
-        b.mesh.rotation.y = Math.atan2(moonVec[2], -moonVec[0]);
+        b.mesh.rotation.y = moonSpinAngle(moonVec, b.tilt.quaternion);
       } else if (perFrame >= 0.5) {
         b.mesh.rotation.y = (nowMs / 1000) * 0.3 * spinSign;
       } else if (id === "Earth") {
@@ -519,7 +526,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       } else {
         b.mesh.rotation.y = spinSign * ((simMs / 1000) / periodSec) * 2 * Math.PI;
       }
-      if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y * 0.03 + (nowMs / 1000) * 0.004;
+      if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y + (nowMs / 1000) * 0.0008;
 
       const camToBody = Math.hypot(camera.position.x - rx, camera.position.y - ry, camera.position.z - rz);
       const px = (b.radius / Math.max(camToBody, 1e-12)) * (halfH / tanHalf);
@@ -546,7 +553,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       b.sr = px;
       const onScreen = tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
       let show = state.showLabels && onScreen;
-      if (id === "Moon" && camToBody > moonDistDisp * 40) show = false;
+      if (id === "Moon" && state.focus !== "Moon") {
+        const e = bodies.Earth;
+        if (Math.hypot(b.sx - e.sx, b.sy - e.sy) < 56) show = false;
+      }
       if (state.focus === id && px > 70) show = false;
       b.shown = show;
       b.label.style.display = show ? "block" : "none";
@@ -564,6 +574,12 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     moonOrbit.visible = state.showOrbits;
     moonOrbit.position.set(bodies.Earth.pos[0] - c[0], bodies.Earth.pos[1] - c[1], bodies.Earth.pos[2] - c[2]);
     moonOrbit.scale.setScalar(moonDistDisp);
+    const ahead = moonOffset(simMs + 6 * 3600000);
+    const nx = moonVec[1] * ahead[2] - moonVec[2] * ahead[1];
+    const ny = moonVec[2] * ahead[0] - moonVec[0] * ahead[2];
+    const nz = moonVec[0] * ahead[1] - moonVec[1] * ahead[0];
+    const nl = Math.hypot(nx, ny, nz);
+    if (nl > 0) moonOrbit.quaternion.setFromUnitVectors(UP, tmp.set(nx / nl, ny / nl, nz / nl));
 
     sky.follow(camera.position);
 
@@ -571,6 +587,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     if (pulse.emitMs !== null) {
       const elapsed = (simMs - pulse.emitMs) / 1000;
       if (elapsed < 0 || elapsed * C_AU_S > PULSE_MAX_AU) {
+        pulse.end = elapsed < 0 ? "reversed" : "range";
         pulse.emitMs = null;
         pulse.mesh.visible = false;
       } else {
@@ -589,7 +606,11 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       }
     }
 
-    return { arrivals, pulseRadius: pulse.emitMs === null ? null : pulse.radius };
+    return {
+      arrivals,
+      pulseRadius: pulse.emitMs === null ? null : pulse.radius,
+      pulseEnd: pulse.emitMs === null ? pulse.end : null,
+    };
   }
 
   function emitPulse(simMs) {
@@ -604,7 +625,13 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function setTrueScale(v) {
+    const focused = bodies[state.focus];
+    const before = focused ? focused.radius : 0;
     state.trueScale = v;
+    if (focused) {
+      const after = displayRadius(focused.data);
+      if (before > 0 && after > 0) camera.position.multiplyScalar(after / before);
+    }
     controls.minDistance = VIEWS[state.focus] ? 0.01 : displayRadius(bodies[state.focus].data) * 1.15;
   }
 
@@ -641,6 +668,24 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     canvas.style.cursor = state.hoverId ? "pointer" : "grab";
   });
 
+  function diagnostics() {
+    const gl = renderer.getContext();
+    let gpu = "unknown";
+    try {
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      if (ext) gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+    } catch {
+      gpu = "unavailable";
+    }
+    return {
+      gpu,
+      calls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
+      degraded: state.degraded,
+      textureMs: state.textureMs,
+    };
+  }
+
   function resize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -667,6 +712,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     stopPulse,
     setTrueScale,
     loadTextures,
+    diagnostics,
     pulse,
   };
 }

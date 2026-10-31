@@ -55,7 +55,9 @@ export function almanac(ms) {
     out.moonPhase = null;
   }
   const key = Math.floor(ms / 43200000);
-  if (cache.key !== key) {
+  const expired =
+    cache.key !== key || !cache.quarter || !cache.season || cache.quarter.ms <= ms || cache.season.ms <= ms;
+  if (expired) {
     cache.key = key;
     try {
       cache.quarter = nextQuarter(date);

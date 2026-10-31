@@ -4,6 +4,15 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 
+function safeUrl(u) {
+  try {
+    const x = new URL(u, location.href);
+    return x.protocol === "https:" || x.protocol === "http:" ? x.href : "#";
+  } catch {
+    return "#";
+  }
+}
+
 function flareClassNote(cls) {
   const c = (cls || "").charAt(0);
   if (c === "X") return "strong";
@@ -21,8 +30,8 @@ export function createDispatch(els) {
       const a = apod.value.data;
       const media =
         a.mediaType === "image"
-          ? `<a href="${esc(a.hdurl || a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title)}"></a>`
-          : `<a class="link" href="${esc(a.url)}" target="_blank" rel="noopener">Open today's media</a>`;
+          ? `<a href="${esc(safeUrl(a.hdurl || a.url))}" target="_blank" rel="noopener"><img src="${esc(safeUrl(a.url))}" alt="${esc(a.title)}"></a>`
+          : `<a class="link" href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Open today's media</a>`;
       parts.push(
         `<section><h4>Picture of the day</h4>${media}<p class="cap-line">${esc(a.title)}</p><p class="dim">${
           a.copyright ? `Credit: ${esc(a.copyright.trim())}` : "NASA APOD"

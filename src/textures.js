@@ -161,11 +161,11 @@ function craters(canvas, rand, count, strength, maxR) {
       ctx.translate(x + dx, y);
       ctx.scale(stretch, 1);
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-      g.addColorStop(0, `rgba(0,0,0,${0.2 * s})`);
-      g.addColorStop(0.55, `rgba(0,0,0,${0.12 * s})`);
-      g.addColorStop(0.8, `rgba(0,0,0,${0.04 * s})`);
-      g.addColorStop(0.92, `rgba(255,255,255,${0.1 * s})`);
-      g.addColorStop(1, "rgba(255,255,255,0)");
+      g.addColorStop(0, `rgba(0,0,0,${0.22 * s})`);
+      g.addColorStop(0.4, `rgba(0,0,0,${0.14 * s})`);
+      g.addColorStop(0.7, `rgba(0,0,0,${0.05 * s})`);
+      g.addColorStop(0.9, `rgba(0,0,0,${0.01 * s})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -432,27 +432,33 @@ export async function sunMap() {
   return toTexture(c);
 }
 
-export function ringTexture() {
+export function ringTexture(rings) {
   const w = 2048;
   const canvas = makeCanvas(w, 4);
   const ctx = canvas.getContext("2d");
   const rand = mulberry(99);
+  const span = rings.outerKm - rings.innerKm;
   for (let x = 0; x < w; x++) {
     const t = x / w;
+    const km = rings.innerKm + ((x + 0.5) / w) * span;
+    const band = rings.bands.find((r) => km >= r.fromKm && km < r.toKm);
+    const gap = rings.gaps.find((g) => km >= g.fromKm && km < g.toKm);
     let a = 0;
     let c = [214, 196, 160];
-    if (t < 0.27) {
-      a = 0.18 + rand() * 0.06;
-      c = [150, 140, 125];
-    } else if (t < 0.66) {
-      a = 0.82 + 0.12 * Math.sin(t * 380) + rand() * 0.05;
-      c = [236, 222, 190];
-    } else if (t < 0.725) {
-      a = 0.05;
-    } else if (t < 0.95) {
-      a = 0.6 + 0.1 * Math.sin(t * 700) + rand() * 0.05;
-      if (t > 0.895 && t < 0.905) a = 0.02;
+    if (band) {
+      if (band.name === "C") {
+        a = 0.18 + rand() * 0.06;
+        c = [150, 140, 125];
+      } else if (band.name === "B") {
+        a = 0.82 + 0.12 * Math.sin(t * 380) + rand() * 0.05;
+        c = [236, 222, 190];
+      } else if (band.name === "Cassini") {
+        a = 0.05;
+      } else {
+        a = 0.6 + 0.1 * Math.sin(t * 700) + rand() * 0.05;
+      }
     }
+    if (gap) a = 0.02;
     ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${clamp(a)})`;
     ctx.fillRect(x, 0, 1, 4);
   }

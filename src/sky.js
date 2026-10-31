@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { galacticBasis } from "./frame.js";
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -33,7 +34,7 @@ function noiseGrid(rand, size) {
   };
 }
 
-function milkyWayTexture() {
+export function milkyWayTexture() {
   const w = 2048;
   const h = 1024;
   const canvas = document.createElement("canvas");
@@ -46,7 +47,7 @@ function milkyWayTexture() {
   const dust = [noiseGrid(rand, 8), noiseGrid(rand, 20), noiseGrid(rand, 50)];
   for (let y = 0; y < h; y++) {
     const v = (y + 0.5) / h;
-    const b = (v - 0.5) * Math.PI;
+    const b = (0.5 - v) * Math.PI;
     for (let x = 0; x < w; x++) {
       const u = (x + 0.5) / w;
       const l = (u - 0.5) * Math.PI * 2;
@@ -137,7 +138,10 @@ function starLayer(rand, count, size, galactic, brightness) {
 export function createSky() {
   const root = new THREE.Group();
   const tilt = new THREE.Group();
-  tilt.rotation.x = (60.2 * Math.PI) / 180;
+  const g = galacticBasis();
+  tilt.setRotationFromMatrix(
+    new THREE.Matrix4().makeBasis(new THREE.Vector3(...g.x), new THREE.Vector3(...g.y), new THREE.Vector3(...g.z))
+  );
   root.add(tilt);
 
   const dome = new THREE.Mesh(

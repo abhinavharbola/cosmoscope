@@ -548,3 +548,19 @@ button:focus:not(:focus-visible) { outline: none; }
   #plate { animation: none; }
   .meter span, #intro { transition: none; }
 }
+
+#diag {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(8, 11, 20, 0.88);
+  border: 1px solid var(--faint);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  pointer-events: none;
+}
