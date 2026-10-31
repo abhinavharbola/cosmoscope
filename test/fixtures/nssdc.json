@@ -1,0 +1,22 @@
+{
+  "source": "NASA NSSDC fact sheets fetched 2026-10-30 and 2026-10-31",
+  "bodies": {
+    "Sun": {"radiusKm": 695700, "massE24": 1988400, "gravity": 274.0, "densityKgM3": 1408, "escapeKmS": 617.6, "rotationHours": 609.12, "tiltDeg": 7.25},
+    "Mercury": {"radiusKm": 2439.7, "rotationHours": 1407.6, "massE24": 0.33, "densityKgM3": 5429, "gravity": 3.7, "escapeKmS": 4.3, "tiltDeg": 0.034, "moons": 0, "semiMajorMKm": 57.9, "inclinationDeg": 7.0, "eccentricity": 0.206},
+    "Venus": {"radiusKm": 6051.8, "rotationHours": -5832.5, "massE24": 4.87, "densityKgM3": 5243, "gravity": 8.9, "escapeKmS": 10.4, "tiltDeg": 177.4, "moons": 0, "semiMajorMKm": 108.2, "inclinationDeg": 3.4, "eccentricity": 0.007},
+    "Earth": {"radiusKm": 6371.0, "rotationHours": 23.9345, "massE24": 5.97, "densityKgM3": 5514, "gravity": 9.8, "escapeKmS": 11.2, "tiltDeg": 23.44, "moons": 1, "semiMajorMKm": 149.6, "inclinationDeg": 0.0, "eccentricity": 0.017},
+    "Mars": {"radiusKm": 3389.5, "rotationHours": 24.6229, "massE24": 0.642, "densityKgM3": 3934, "gravity": 3.7, "escapeKmS": 5.0, "tiltDeg": 25.19, "moons": 2, "semiMajorMKm": 228.0, "inclinationDeg": 1.8, "eccentricity": 0.094},
+    "Jupiter": {"radiusKm": 69911, "rotationHours": 9.925, "massE24": 1898, "densityKgM3": 1326, "gravity": 23.1, "escapeKmS": 59.5, "tiltDeg": 3.13, "moons": 95, "semiMajorMKm": 778.5, "inclinationDeg": 1.3, "eccentricity": 0.049},
+    "Saturn": {"radiusKm": 58232, "rotationHours": 10.656, "massE24": 568, "densityKgM3": 687, "gravity": 9.0, "escapeKmS": 35.5, "tiltDeg": 26.73, "moons": 274, "semiMajorMKm": 1432.0, "inclinationDeg": 2.5, "eccentricity": 0.052},
+    "Uranus": {"radiusKm": 25362, "rotationHours": -17.24, "massE24": 86.8, "densityKgM3": 1270, "gravity": 8.7, "escapeKmS": 21.3, "tiltDeg": 97.77, "moons": 28, "semiMajorMKm": 2867.0, "inclinationDeg": 0.8, "eccentricity": 0.047},
+    "Neptune": {"radiusKm": 24622, "rotationHours": 16.11, "massE24": 102, "densityKgM3": 1638, "gravity": 11.0, "escapeKmS": 23.5, "tiltDeg": 28.32, "moons": 16, "semiMajorMKm": 4515.0, "inclinationDeg": 1.8, "eccentricity": 0.01},
+    "Pluto": {"radiusKm": 1188, "rotationHours": -153.3, "massE24": 0.013, "densityKgM3": 1850, "gravity": 0.7, "escapeKmS": 1.3, "tiltDeg": 119.5, "moons": 5, "semiMajorMKm": 5906.4, "inclinationDeg": 17.2, "eccentricity": 0.244},
+    "Moon": {"radiusKm": 1737.4, "rotationHours": 655.7, "massE24": 0.073, "densityKgM3": 3340, "gravity": 1.6, "escapeKmS": 2.4, "tiltDeg": 6.7, "semiMajorMKm": 0.384, "inclinationDeg": 5.1, "eccentricity": 0.055}
+  },
+  "poles": {
+    "Sun": [286.13, 63.87], "Mercury": [281.01, 61.414], "Venus": [272.76, 67.16], "Mars": [317.681, 52.887],
+    "Jupiter": [268.057, 64.495], "Saturn": [40.589, 83.537], "Uranus": [257.311, -15.175], "Neptune": [299.36, 43.46], "Pluto": [132.99, -6.16]
+  },
+  "saturnRingsKm": {"C": [74658, 91975], "B": [91975, 117507], "A": [122340, 136780], "enckeGapInner": 133410},
+  "positiveRotationRate": {"Sun": true, "Mercury": true, "Venus": false, "Earth": true, "Moon": true, "Mars": true, "Jupiter": true, "Saturn": true, "Uranus": false, "Neptune": true, "Pluto": true}
+}
