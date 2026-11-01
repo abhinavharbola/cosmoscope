@@ -35,6 +35,8 @@ const has = (o, k) => Object.hasOwn(o, k);
 
 const sim = { ms: Date.now(), scale: 3600, direction: 1, paused: false, tz: "local" };
 
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 try {
   const saved = localStorage.getItem("cosmos_tz");
   if (saved === "utc" || saved === "local") sim.tz = saved;
@@ -47,8 +49,11 @@ try {
   world = createWorld($("stage"), $("labels"), {
     onSelect: (id) => focusOn(id),
     onProgress: (done, total, id) => {
-      $("intro-line").textContent = `Painting ${id}`;
-      $("intro-fill").style.width = `${(done / total) * 100}%`;
+      const line = $("intro-line");
+      const fill = $("intro-fill");
+      if (!line || !fill) return;
+      line.textContent = `Painting ${id}`;
+      fill.style.width = `${(done / total) * 100}%`;
     },
   });
 } catch (err) {
@@ -78,6 +83,13 @@ const dispatch = createDispatch({
   toggle: $("dispatch-toggle"),
   panel: $("dispatch"),
 });
+
+try {
+  const savedTex = localStorage.getItem("cosmos_tex");
+  if (savedTex) world.setTextureQuality(savedTex);
+} catch {
+  world.setTextureQuality("2k");
+}
 
 const clock = createClock();
 const textCache = new Map();
@@ -229,7 +241,21 @@ const toggles = {
   sizes: $("btn-sizes"),
   orbits: $("btn-orbits"),
   labels: $("btn-labels"),
+  quality: $("btn-quality"),
 };
+
+function cycleQuality() {
+  const tiers = world.textureTiers();
+  if (tiers.length < 2) return;
+  const at = tiers.indexOf(world.state.textureQuality);
+  const next = tiers[(at + 1) % tiers.length];
+  world.setTextureQuality(next);
+  try {
+    localStorage.setItem("cosmos_tex", next);
+  } catch {
+    return;
+  }
+}
 
 function toggleSizes() {
   world.setTrueScale(!world.state.trueScale);
@@ -248,6 +274,9 @@ let diagOn = false;
 function renderDiag() {
   const d = world.diagnostics();
   const t = d.textureMs;
+  const supplied = Object.entries(world.state.surfaces)
+    .map(([id, surface]) => `${id} ${surface.tier}`)
+    .join(", ");
   setText(
     $("diag"),
     [
@@ -256,6 +285,7 @@ function renderDiag() {
       `GPU: ${d.gpu}`,
       `Shader fallback: ${d.degraded ? "active" : "no"}`,
       `Textures: ${t === null ? "building" : `${(t / 1000).toFixed(1)} s`}`,
+      `Supplied maps: ${supplied || "none"}`,
     ].join("\n")
   );
 }
@@ -269,6 +299,7 @@ function toggleDiag() {
 toggles.sizes.addEventListener("click", toggleSizes);
 toggles.orbits.addEventListener("click", toggleOrbits);
 toggles.labels.addEventListener("click", toggleLabels);
+toggles.quality.addEventListener("click", cycleQuality);
 
 let pulseActive = false;
 let pulseStartMs = 0;
@@ -415,12 +446,26 @@ $("plate-more").addEventListener("click", () => {
   applyMore();
 });
 
+function surfaceHTML(id) {
+  const surface = Object.hasOwn(world.state.surfaces, id) ? world.state.surfaces[id] : null;
+  if (!surface) return "Surface: procedural, not a photograph.";
+  const name = esc(surface.credit || "supplied texture");
+  const credit = surface.url ? `<a href="${esc(surface.url)}" target="_blank" rel="noopener">${name}</a>` : name;
+  const parts = [credit];
+  if (surface.license) parts.push(esc(surface.license));
+  parts.push(`${esc(surface.tier)} map`);
+  let html = `Surface: ${parts.join(", ")}.`;
+  if (surface.note) html += ` ${esc(surface.note)}`;
+  return html;
+}
+
 function renderSource(id) {
-  const textured = world.state.textured && world.state.textured.has(id);
-  $("plate-src").innerHTML =
+  setHTML(
+    $("plate-src"),
     `<a href="${SOURCE_FACTS.url}" target="_blank" rel="noopener">NASA NSSDC</a>, ${SOURCE_FACTS.version}. ` +
-    `Positions: <a href="${SOURCE_POSITIONS.url}" target="_blank" rel="noopener">${SOURCE_POSITIONS.name}</a>. ` +
-    `Surface: ${textured ? "supplied texture" : "procedural"}.`;
+      `Positions: <a href="${SOURCE_POSITIONS.url}" target="_blank" rel="noopener">${SOURCE_POSITIONS.name}</a>. ` +
+      surfaceHTML(id)
+  );
 }
 
 function focusOn(id) {
@@ -499,6 +544,9 @@ function renderDock() {
   set(toggles.sizes, s.trueScale, "Planet size", s.trueScale ? "True scale" : "Exaggerated");
   set(toggles.orbits, s.showOrbits, "Orbit trails", s.showOrbits ? "On" : "Off");
   set(toggles.labels, s.showLabels, "Labels", s.showLabels ? "On" : "Off");
+  const tiers = world.textureTiers();
+  toggles.quality.hidden = tiers.length < 2;
+  if (tiers.length > 1) set(toggles.quality, s.textureQuality !== "2k", "Texture detail", s.textureQuality);
   const input = $("date-input");
   if (document.activeElement !== input) {
     const iso = inputDate(sim.ms, sim.tz);
@@ -631,6 +679,7 @@ function step(now) {
     renderAlmanac();
     renderIndex();
     updateLive();
+    if (has(ALL, world.state.focus)) renderSource(world.state.focus);
     if (diagOn) renderDiag();
   }
   if (now - hashTick > 1000) {

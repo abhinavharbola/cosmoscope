@@ -4,7 +4,8 @@ import { SUN, PLANETS, MOON, AU_KM, C_AU_S, POLES } from "./data.js";
 import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
 import { orbitWindowStart } from "./timeutil.js";
 import { moonSpinAngle, nodeOffset, primeMeridianRad } from "./frame.js";
-import { buildMaps, sunMap, ringTexture, glowTexture, loadOverrides } from "./textures.js";
+import { buildMaps, sunMap, ringTexture, glowTexture, loadManifest, loadSurface, disposeMaps } from "./textures.js";
+import { TIERS, BASE_TIER, availableTiers, surfaceKey } from "./texmanifest.js";
 import { createSky } from "./sky.js";
 
 const ART_BASE = 0.035;
@@ -232,8 +233,12 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     orbitBuiltMs: null,
     degraded: false,
     textured: new Set(),
+    surfaces: {},
+    textureQuality: BASE_TIER,
     textureMs: null,
   };
+  let surfaceManifest = Object.create(null);
+  const surfaceTokens = {};
   const patched = [];
 
   renderer.debug.onShaderError = (gl, program, vs, fs) => {
@@ -442,7 +447,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     b.orbit.geometry.attributes.color.needsUpdate = true;
   }
 
-  function applyMaps(b, maps) {
+  function applyMaps(b, maps, bumpScale = 0.9) {
+    b.maps = maps;
     if (b.data.id === "Sun") {
       b.mesh.material.map = maps.map;
       b.mesh.material.color.set(0xffffff);
@@ -454,7 +460,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     mat.color.set(0xffffff);
     if (maps.bump) {
       mat.bumpMap = maps.bump;
-      mat.bumpScale = 0.9;
+      mat.bumpScale = bumpScale;
     }
     if (maps.rough) {
       mat.roughnessMap = maps.rough;
@@ -469,31 +475,104 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       patched.push(mat);
     }
     mat.needsUpdate = true;
-    if (maps.clouds) {
+    if (maps.clouds || maps.cloudMask) {
       const clouds = new THREE.Mesh(
         new THREE.SphereGeometry(1.012, 96, 64),
-        new THREE.MeshStandardMaterial({ map: maps.clouds, transparent: true, depthWrite: false, roughness: 1 })
+        new THREE.MeshStandardMaterial({
+          map: maps.clouds || null,
+          alphaMap: maps.cloudMask || null,
+          transparent: true,
+          depthWrite: false,
+          roughness: 1,
+        })
       );
       b.tilt.add(clouds);
       b.clouds = clouds;
     }
   }
 
+  function swapMaps(b, next) {
+    const mat = b.mesh.material;
+    const prev = b.maps || {};
+    if (next.map) mat.map = next.map;
+    if (next.bump) mat.bumpMap = next.bump;
+    if (next.rough) mat.roughnessMap = next.rough;
+    if (next.lights) mat.emissiveMap = next.lights;
+    mat.needsUpdate = true;
+    if (b.clouds) {
+      if (next.clouds) b.clouds.material.map = next.clouds;
+      if (next.cloudMask) b.clouds.material.alphaMap = next.cloudMask;
+      b.clouds.material.needsUpdate = true;
+    }
+    const stale = {};
+    for (const [slot, tex] of Object.entries(prev)) if (next[slot] && next[slot] !== tex) stale[slot] = tex;
+    disposeMaps(stale);
+    b.maps = { ...prev, ...next };
+  }
+
+  async function setSurfaceTier(id, wanted) {
+    const entry = surfaceManifest[id];
+    const cur = state.surfaces[id];
+    const b = bodies[id];
+    if (!entry || !cur || !b) return;
+    surfaceTokens[id] = (surfaceTokens[id] || 0) + 1;
+    const token = surfaceTokens[id];
+    if (cur.key === surfaceKey(entry, wanted)) return;
+    const loaded = await loadSurface(entry, wanted);
+    if (!loaded) return;
+    if (token !== surfaceTokens[id]) {
+      disposeMaps(loaded.maps);
+      return;
+    }
+    swapMaps(b, loaded.maps);
+    cur.tier = loaded.tier;
+    cur.key = loaded.key;
+  }
+
+  function syncTiers() {
+    for (const id of Object.keys(state.surfaces)) {
+      const wanted = id === state.focus ? state.textureQuality : BASE_TIER;
+      setSurfaceTier(id, wanted).catch((err) => console.warn(`Texture detail for ${id} failed`, err));
+    }
+  }
+
+  function setTextureQuality(q) {
+    if (!TIERS.includes(q)) return;
+    state.textureQuality = q;
+    syncTiers();
+  }
+
+  function textureTiers() {
+    return availableTiers(surfaceManifest);
+  }
+
   async function loadTextures() {
     const started = performance.now();
-    const overrides = await loadOverrides();
+    surfaceManifest = await loadManifest();
     const total = TEXTURE_ORDER.length;
     let done = 0;
     for (const id of TEXTURE_ORDER) {
       const b = bodies[id];
       try {
-        let maps;
-        if (overrides[id] && overrides[id].map) {
-          maps = overrides[id];
+        let maps = null;
+        let bumpScale;
+        const entry = surfaceManifest[id];
+        const real = entry ? await loadSurface(entry, BASE_TIER) : null;
+        if (real) {
+          maps = real.maps;
+          bumpScale = entry.bumpScale ?? undefined;
           state.textured.add(id);
+          state.surfaces[id] = {
+            tier: real.tier,
+            key: real.key,
+            credit: entry.credit,
+            license: entry.license,
+            note: entry.note,
+            url: entry.url,
+          };
         } else if (id === "Sun") maps = { map: await sunMap() };
         else maps = await buildMaps(b.data);
-        applyMaps(b, maps);
+        applyMaps(b, maps, bumpScale);
       } catch (err) {
         console.warn(`Texture for ${id} failed`, err);
       }
@@ -501,6 +580,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       onProgress(done, total, id);
     }
     state.textureMs = performance.now() - started;
+    syncTiers();
   }
 
   function displayRadius(data) {
@@ -517,6 +597,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   function setFocus(id) {
     if (!isView(id) && !Object.hasOwn(bodies, id)) return;
     state.focus = id;
+    syncTiers();
     const fromDist = camera.position.length();
     state.trans = { from: state.center.slice(), t0: performance.now(), dur: 2200, fromDist, id };
     controls.minDistance = isView(id) ? 0.01 : displayRadius(bodies[id].data) * 1.15;
@@ -807,6 +888,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     stopPulse,
     setTrueScale,
     loadTextures,
+    setTextureQuality,
+    textureTiers,
     diagnostics,
     pulse,
   };

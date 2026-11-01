@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { parseManifest, resolveFiles, surfaceKey, centerLonOffset, MASK_SLOTS } from "./texmanifest.js";
 
 const channel = typeof window !== "undefined" && typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
 
@@ -507,30 +508,45 @@ export function glowTexture() {
   return tex;
 }
 
-export async function loadOverrides() {
-  let manifest = {};
+export async function loadManifest() {
   try {
     const res = await fetch("textures/manifest.json", { cache: "no-cache" });
-    if (res.ok) manifest = await res.json();
+    if (res.ok) return parseManifest(await res.json());
   } catch {
-    manifest = {};
+    return parseManifest(null);
   }
+  return parseManifest(null);
+}
+
+export function disposeMaps(maps) {
+  for (const tex of Object.values(maps)) if (tex && tex.dispose) tex.dispose();
+}
+
+export async function loadSurface(entry, wanted) {
+  const picks = resolveFiles(entry, wanted);
+  if (!picks.map) return null;
   const loader = new THREE.TextureLoader();
-  const out = {};
-  for (const [id, files] of Object.entries(manifest)) {
-    out[id] = {};
-    await Promise.all(
-      Object.entries(files).map(async ([slot, file]) => {
-        try {
-          const tex = await loader.loadAsync(`textures/${file}`);
-          tex.colorSpace = slot === "rough" || slot === "bump" ? THREE.NoColorSpace : THREE.SRGBColorSpace;
-          tex.anisotropy = 8;
-          out[id][slot] = tex;
-        } catch {
-          return;
+  const offset = centerLonOffset(entry.centerLon);
+  const maps = {};
+  await Promise.all(
+    Object.entries(picks).map(async ([slot, pick]) => {
+      try {
+        const tex = await loader.loadAsync(`textures/${pick.file}`);
+        tex.colorSpace = MASK_SLOTS.includes(slot) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        if (offset !== 0) {
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.offset.x = offset;
         }
-      })
-    );
+        maps[slot] = tex;
+      } catch {
+        return;
+      }
+    })
+  );
+  if (!maps.map) {
+    disposeMaps(maps);
+    return null;
   }
-  return out;
+  return { maps, tier: picks.map.tier, key: surfaceKey(entry, wanted) };
 }
