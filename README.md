@@ -17,7 +17,7 @@ Click a body or its label to fly to it. Drag to orbit, scroll to zoom. Press ? i
 ## Data and provenance
 
 - Positions: astronomy-engine, computed locally for 1801 to 2198. The clock wraps outside that range.
-- Pole directions: IAU rotation poles, so axial tilt azimuth and Saturn's ring plane are oriented correctly. Earth's spin uses real sidereal time.
+- Pole directions: IAU rotation poles, so axial tilt azimuth and Saturn's ring plane are oriented correctly. Earth's spin uses real sidereal time. Other bodies use the IAU prime meridian angle (W0 and rate), so a supplied texture lines up with the real surface; periodic nutation terms are omitted.
 - Planet facts: NASA NSSDC Planetary Fact Sheet, version of 18 March 2025. Mass, gravity, escape velocity, distance from Sun, inclination, eccentricity, obliquity, temperature, density, moons and rings were checked against that table. Mean radius, rotation period, Sun values, Saturn ring edges and pole directions were checked against the individual NSSDC fact sheets on 30 and 31 Oct 2026, and are pinned by `npm test` (fixture in `test/fixtures/nssdc.json`).
 - Almanac block: moon phase, illumination, next lunar quarter and next solstice or equinox, all computed locally.
 - NASA dispatch: APOD, NeoWs and DONKI through api.nasa.gov. DEMO_KEY is rate limited, so paste a free key into the panel. Responses are cached for one hour in localStorage.
@@ -47,7 +47,9 @@ The pulse expands from the Sun at 299,792.458 km/s of simulated time. Sending it
 ## Known limits
 
 - Orbit trails are one sampled period and rebuild after 25 simulated years of drift.
-- The Moon orbit ring is drawn in the ecliptic plane, not at its 5 degree inclination.
+- The Moon orbit ring is drawn in the Moon's instantaneous orbital plane, so it carries the 5 degree inclination, but it is a circle at an exaggerated radius, not the true ellipse.
+- Procedural surfaces, including Earth's continents, are not real geography. Earth's rotation is astronomically correct, but the continents it carries are not.
+- Planet lighting is the Sun at full strength with a softened distance falloff that follows the focused body, not true inverse square. Saturn's rings are lit and cast the planet's shadow.
 - Only Saturn's rings are drawn.
 - Exoplanets, nearby stars and a real star catalog are not built yet.
 
@@ -57,4 +59,4 @@ The pulse expands from the Sun at 299,792.458 km/s of simulated time. Sending it
 
 ## Hosting
 
-`.github/workflows/pages.yml` publishes the static site to GitHub Pages. To keep a NASA key off the client, deploy `deploy/nasa-proxy-worker.js` as a Cloudflare Worker with secret `NASA_API_KEY` and put its URL in the `nasa-proxy` meta tag of `index.html`.
+`.github/workflows/pages.yml` publishes the static site to GitHub Pages. To keep a NASA key off the client, deploy `deploy/nasa-proxy-worker.js` as a Cloudflare Worker with secret `NASA_API_KEY` and variable `ALLOW_ORIGIN` (comma separated list of the site origins allowed to call it, for example `https://you.github.io`), then put the Worker URL in the `nasa-proxy` meta tag of `index.html`. The Worker refuses other origins, forwards only whitelisted paths and date parameters, and never caches error responses. It has no rate limiting, so add a Cloudflare rate limiting rule if the site is public.
