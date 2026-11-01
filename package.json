@@ -10,9 +10,13 @@
   "scripts": {
     "start": "python3 -m http.server 8000",
     "test": "node --test test/*.test.mjs",
-    "textures": "node tools/render-textures.mjs"
+    "textures": "node tools/render-textures.mjs",
+    "textures:fetch": "node tools/fetch-textures.mjs",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
-    "astronomy-engine": "2.1.19"
+    "@playwright/test": "1.64.1",
+    "astronomy-engine": "2.1.19",
+    "three": "0.170.0"
   }
 }
