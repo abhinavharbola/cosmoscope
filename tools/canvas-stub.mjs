@@ -41,6 +41,10 @@ class Context2D {
     return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
   }
 
+  getImageData(x, y, w, h) {
+    return { width: w, height: h, data: new Uint8ClampedArray(this.canvas.data) };
+  }
+
   putImageData(img) {
     this.canvas.data.set(img.data);
   }

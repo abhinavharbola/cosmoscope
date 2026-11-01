@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { MIN_MS, MAX_MS, clampMs, orbitWindowStart } from "../src/timeutil.js";
-import { formatDuration, formatRate } from "../src/format.js";
+import { formatDuration, formatRate, formatUnit } from "../src/format.js";
+import { inputDate, parseInputDate } from "../src/dates.js";
 import { C_AU_S } from "../src/data.js";
 
 const D = Math.PI / 180;
@@ -56,4 +57,23 @@ test("formatting", () => {
   assert.equal(formatDuration(1 / C_AU_S), "8 min 19 s");
   assert.equal(formatRate(1), "Real time");
   assert.equal(formatRate(315576000), "1 s = 10 years");
+});
+
+test("the last selectable date stays inside the range instead of wrapping to 1801", () => {
+  for (const tz of ["utc", "local"]) {
+    const last = parseInputDate("2198-12-31", tz);
+    assert.ok(last > Date.UTC(2198, 0, 1), tz);
+    assert.equal(clampMs(last), last);
+    const first = parseInputDate("1801-01-01", tz);
+    assert.ok(first >= MIN_MS && first < Date.UTC(1801, 1, 1), tz);
+  }
+  assert.equal(inputDate(Date.UTC(2198, 11, 31, 12), "utc"), "2198-12-31");
+  assert.ok(Number.isNaN(parseInputDate("", "utc")));
+});
+
+test("unit and duration edge cases", () => {
+  assert.equal(formatUnit(86400 * 364), "1 year");
+  assert.equal(formatUnit(86400 * 90), "3 months");
+  assert.equal(formatDuration(86400 * 365.25), "1 year");
+  assert.equal(formatDuration(86400 * 365.25 * 2.5), "2.5 years");
 });

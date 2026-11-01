@@ -6,7 +6,7 @@ import { SUN, PLANETS, MOON, POLES, MOMENTS } from "../src/data.js";
 const fx = JSON.parse(readFileSync(new URL("./fixtures/nssdc.json", import.meta.url)));
 const all = [SUN, ...PLANETS, MOON];
 
-test("body values match NSSDC fixture", () => {
+test("body values match the pinned NSSDC fixture", () => {
   for (const b of all) {
     const ref = fx.bodies[b.id];
     for (const [k, v] of Object.entries(ref)) assert.ok(Math.abs(b[k] - v) < 1e-9, `${b.id}.${k}: ${b[k]} vs ${v}`);
@@ -40,4 +40,38 @@ test("moments are verified instants", () => {
   assert.equal(iso["Apollo 11 lands"], "1969-07-20T20:17:40Z");
   assert.equal(iso["Venus transit, greatest"], "2012-06-06T01:29:36Z");
   assert.equal(iso["Jupiter and Saturn conjunct"], "2020-12-21T18:20:00Z");
+});
+
+const G = 6.674e-11;
+const mass = (b) => b.massE24 * 1e24;
+const rM = (b) => b.radiusKm * 1000;
+const within = (a, b, tol) => Math.abs(a - b) / b <= tol;
+
+test("density follows from mass and mean radius", () => {
+  for (const b of all) {
+    const rho = mass(b) / ((4 / 3) * Math.PI * rM(b) ** 3);
+    assert.ok(within(rho, b.densityKgM3, 0.05), `${b.id} ${rho} vs ${b.densityKgM3}`);
+  }
+});
+
+test("escape velocity follows from mass and radius", () => {
+  for (const b of all) {
+    const v = Math.sqrt((2 * G * mass(b)) / rM(b)) / 1000;
+    assert.ok(within(v, b.escapeKmS, 0.1), `${b.id} ${v} vs ${b.escapeKmS}`);
+  }
+});
+
+test("surface gravity follows from mass and radius for near-spherical bodies", () => {
+  for (const b of all.filter((x) => ["Sun", "Mercury", "Venus", "Earth", "Mars", "Moon"].includes(x.id))) {
+    const g = (G * mass(b)) / rM(b) ** 2;
+    assert.ok(within(g, b.gravity, 0.05), `${b.id} ${g} vs ${b.gravity}`);
+  }
+});
+
+test("prime meridian rates agree with rotation periods and spin signs", () => {
+  for (const b of all.filter((x) => x.W0 !== undefined)) {
+    const hours = (360 / Math.abs(b.Wdot)) * 24;
+    assert.ok(within(hours, Math.abs(b.rotationHours), 0.015), `${b.id} ${hours} vs ${b.rotationHours}`);
+    assert.equal(b.Wdot > 0, (b.spinSign ?? 1) > 0, b.id);
+  }
 });

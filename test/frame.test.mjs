@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toThree, poleVector, equatorialUnit, galacticBasis, moonSpinAngle, quatFromUnitVectors, rotateByQuat } from "../src/frame.js";
+import { toThree, poleVector, equatorialUnit, galacticBasis, moonSpinAngle, quatFromUnitVectors, rotateByQuat, nodeOffset, primeMeridianRad } from "../src/frame.js";
 import { POLES } from "../src/data.js";
 
 const D = Math.PI / 180;
@@ -79,4 +79,17 @@ test("moon near side axis is the projection of the earth direction on the lunar 
     const proj = norm(toEarth.map((x, j) => x - k * pole[j]));
     assert.ok(dot(d, proj) > 1 - 1e-9);
   }
+});
+
+test("earth node offset places the prime meridian at the sidereal angle", () => {
+  const q = quatFromUnitVectors(UP, poleVector(...POLES.Earth));
+  assert.ok(Math.abs(nodeOffset(q, POLES.Earth[0]) - Math.PI / 2) < 1e-9);
+  const w0 = 190.147;
+  const rate = 360.9856235;
+  const ms = Date.parse("2000-01-01T12:00:00Z");
+  const w = primeMeridianRad(w0, rate, ms);
+  const rotation = w + nodeOffset(q, POLES.Earth[0]);
+  const meridian = rotateByQuat(q, [Math.cos(rotation), 0, -Math.sin(rotation)]);
+  const ra = (Math.atan2(-meridian[2] * Math.cos(23.4392911 * D) - meridian[1] * Math.sin(23.4392911 * D), meridian[0]) / D + 360) % 360;
+  assert.ok(Math.abs(ra - 280.46) < 0.6, String(ra));
 });
