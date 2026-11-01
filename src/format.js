@@ -12,7 +12,7 @@ export function formatDuration(sec) {
   }
   if (s < 86400 * 365.25) return plural(trim(s / 86400), "day");
   const y = s / (86400 * 365.25);
-  return y < 10 ? `${y.toFixed(2)} years` : `${y.toFixed(1)} years`;
+  return plural(y < 10 ? Number(y.toFixed(2)).toString() : trim(y), "year");
 }
 
 function trim(x) {
@@ -29,7 +29,7 @@ export function formatUnit(sec) {
   if (sec < 86400) return `${trim(sec / 3600)} hr`;
   if (sec < 86400 * 7) return plural(trim(sec / 86400), "day");
   if (sec < 86400 * 30) return plural(trim(sec / 604800), "week");
-  if (sec < 86400 * 365) return plural(trim(sec / 2629800), "month");
+  if (sec < 31557600 * 0.96) return plural(trim(sec / 2629800), "month");
   return plural(trim(sec / 31557600), "year");
 }
 

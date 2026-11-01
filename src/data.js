@@ -15,6 +15,8 @@ export const SOURCE_POSITIONS = {
 
 export const SUN = {
   id: "Sun",
+  W0: 84.176,
+  Wdot: 14.1844,
   name: "Sun",
   type: "G-type main-sequence star",
   radiusKm: 695700,
@@ -36,6 +38,8 @@ export const SUN = {
 export const PLANETS = [
   {
     id: "Mercury",
+    W0: 329.5988,
+    Wdot: 6.1385108,
     name: "Mercury",
     type: "Terrestrial planet",
     radiusKm: 2439.7,
@@ -57,6 +61,8 @@ export const PLANETS = [
   },
   {
     id: "Venus",
+    W0: 160.2,
+    Wdot: -1.4813688,
     name: "Venus",
     type: "Terrestrial planet",
     radiusKm: 6051.8,
@@ -102,6 +108,8 @@ export const PLANETS = [
   },
   {
     id: "Mars",
+    W0: 176.63,
+    Wdot: 350.89198226,
     name: "Mars",
     type: "Terrestrial planet",
     radiusKm: 3389.5,
@@ -124,6 +132,8 @@ export const PLANETS = [
   },
   {
     id: "Jupiter",
+    W0: 284.95,
+    Wdot: 870.536,
     name: "Jupiter",
     type: "Gas giant",
     radiusKm: 69911,
@@ -146,6 +156,8 @@ export const PLANETS = [
   },
   {
     id: "Saturn",
+    W0: 38.9,
+    Wdot: 810.7939024,
     name: "Saturn",
     type: "Gas giant",
     radiusKm: 58232,
@@ -179,6 +191,8 @@ export const PLANETS = [
   },
   {
     id: "Uranus",
+    W0: 203.81,
+    Wdot: -501.1600928,
     name: "Uranus",
     type: "Ice giant",
     radiusKm: 25362,
@@ -202,6 +216,8 @@ export const PLANETS = [
   },
   {
     id: "Neptune",
+    W0: 249.978,
+    Wdot: 541.1397757,
     name: "Neptune",
     type: "Ice giant",
     radiusKm: 24622,
@@ -224,6 +240,8 @@ export const PLANETS = [
   },
   {
     id: "Pluto",
+    W0: 302.695,
+    Wdot: 56.3625225,
     name: "Pluto",
     type: "Dwarf planet",
     radiusKm: 1188,

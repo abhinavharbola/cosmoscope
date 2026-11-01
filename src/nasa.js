@@ -16,6 +16,16 @@ export function setApiKey(key) {
   } catch {}
 }
 
+export function clearCache() {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("nasa_cache_"))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    return;
+  }
+}
+
 function ymd(d) {
   return d.toISOString().slice(0, 10);
 }
@@ -72,7 +82,7 @@ function proxyBase() {
 
 async function getJson(path) {
   const proxy = proxyBase();
-  const url = proxy ? `${proxy}${path}` : `${BASE}${path}${path.includes("?") ? "&" : "?"}api_key=${getApiKey()}`;
+  const url = proxy ? `${proxy}${path}` : `${BASE}${path}${path.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(getApiKey())}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`NASA API ${res.status}`);
   return res.json();
@@ -90,7 +100,9 @@ export function loadNeo() {
   return cached(`neo_${today}`, async () => {
     const j = await getJson(`/neo/rest/v1/feed?start_date=${today}&end_date=${today}`);
     const list = Object.values(j.near_earth_objects).flat();
-    const rows = list.map((n) => {
+    const rows = list
+      .filter((n) => n.close_approach_data && n.close_approach_data[0])
+      .map((n) => {
       const ca = n.close_approach_data[0];
       return {
         name: n.name.replace(/[()]/g, "").trim(),
@@ -99,7 +111,7 @@ export function loadNeo() {
         speedKmS: parseFloat(ca.relative_velocity.kilometers_per_second),
         diameterM: n.estimated_diameter.meters.estimated_diameter_max,
       };
-    });
+      });
     rows.sort((a, b) => a.lunarDistance - b.lunarDistance);
     return { count: rows.length, closest: rows[0] || null, hazardous: rows.filter((r) => r.hazardous).length };
   });
@@ -115,7 +127,7 @@ export function loadFlares() {
       peak: f.peakTime,
       region: f.sourceLocation || null,
     }));
-    rows.sort((a, b) => (a.peak < b.peak ? 1 : -1));
+    rows.sort((a, b) => (a.peak < b.peak ? 1 : a.peak > b.peak ? -1 : 0));
     return { count: rows.length, latest: rows[0] || null };
   });
 }

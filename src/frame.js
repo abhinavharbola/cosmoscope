@@ -49,6 +49,17 @@ export function moonSpinAngle(moonVec, tiltQuat) {
   return Math.atan2(v[2], -v[0]);
 }
 
+export function nodeOffset(tiltQuat, poleRaDeg) {
+  const q = toThree(equatorialUnit(poleRaDeg + 90, 0));
+  const v = rotateByInverse(tiltQuat, q);
+  return Math.atan2(-v[2], v[0]);
+}
+
+export function primeMeridianRad(W0, Wdot, ms) {
+  const days = ms / 86400000 + 2440587.5 - 2451545;
+  return (((W0 + Wdot * days) % 360) * Math.PI) / 180;
+}
+
 export function quatFromUnitVectors(a, b) {
   const d = dot(a, b);
   if (d < -0.999999) return { x: 1, y: 0, z: 0, w: 0 };

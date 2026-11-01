@@ -11,7 +11,8 @@ const SEASONS = [
   ["dec_solstice", "December solstice"],
 ];
 
-const cache = { key: null, quarter: null, season: null };
+const BUCKET_MS = 43200000;
+const cache = { key: null, quarters: [], seasons: [] };
 
 function phaseName(d) {
   if (d < 6 || d > 354) return "New Moon";
@@ -24,12 +25,17 @@ function phaseName(d) {
   return "Waning crescent";
 }
 
-function nextQuarter(date) {
-  const q = Astronomy.SearchMoonQuarter(date);
-  return { name: QUARTERS[q.quarter], ms: q.time.date.getTime() };
+function quarterList(date) {
+  const list = [];
+  let q = Astronomy.SearchMoonQuarter(date);
+  for (let i = 0; i < 3; i++) {
+    list.push({ name: QUARTERS[q.quarter], ms: q.time.date.getTime() });
+    q = Astronomy.NextMoonQuarter(q);
+  }
+  return list;
 }
 
-function nextSeason(date, ms) {
+function seasonList(date) {
   const year = date.getUTCFullYear();
   const events = [];
   for (const y of [year, year + 1]) {
@@ -37,7 +43,15 @@ function nextSeason(date, ms) {
     for (const [key, name] of SEASONS) events.push({ name, ms: s[key].date.getTime() });
   }
   events.sort((a, b) => a.ms - b.ms);
-  return events.find((e) => e.ms > ms) || null;
+  return events;
+}
+
+function firstAfter(list, ms) {
+  return list.find((e) => e.ms > ms) || null;
+}
+
+function pack(e) {
+  return e ? { name: e.name, date: shortDate(e.ms), ms: e.ms } : null;
 }
 
 export function almanac(ms) {
@@ -54,23 +68,24 @@ export function almanac(ms) {
   } catch {
     out.moonPhase = null;
   }
-  const key = Math.floor(ms / 43200000);
-  const expired =
-    cache.key !== key || !cache.quarter || !cache.season || cache.quarter.ms <= ms || cache.season.ms <= ms;
-  if (expired) {
+  const key = Math.floor(ms / BUCKET_MS);
+  const stale =
+    cache.key !== key || !firstAfter(cache.quarters, ms) || !firstAfter(cache.seasons, ms);
+  if (stale) {
     cache.key = key;
+    const start = new Date(key * BUCKET_MS);
     try {
-      cache.quarter = nextQuarter(date);
+      cache.quarters = quarterList(start);
     } catch {
-      cache.quarter = null;
+      cache.quarters = [];
     }
     try {
-      cache.season = nextSeason(date, ms);
+      cache.seasons = seasonList(start);
     } catch {
-      cache.season = null;
+      cache.seasons = [];
     }
   }
-  out.nextQuarter = cache.quarter && cache.quarter.ms > ms ? { name: cache.quarter.name, date: shortDate(cache.quarter.ms), ms: cache.quarter.ms } : null;
-  out.nextSeason = cache.season && cache.season.ms > ms ? { name: cache.season.name, date: shortDate(cache.season.ms), ms: cache.season.ms } : null;
+  out.nextQuarter = pack(firstAfter(cache.quarters, ms));
+  out.nextSeason = pack(firstAfter(cache.seasons, ms));
   return out;
 }

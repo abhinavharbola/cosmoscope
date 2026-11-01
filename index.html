@@ -22,7 +22,7 @@
 </script>
 </head>
 <body>
-<canvas id="stage"></canvas>
+<canvas id="stage" role="img" aria-label="Interactive 3D model of the solar system"></canvas>
 <div id="labels"></div>
 <div id="vignette"></div>
 
@@ -88,7 +88,7 @@
     </div>
     <div class="tools">
       <div class="menu">
-        <button id="btn-jump" class="ghost">Jump</button>
+        <button id="btn-jump" class="ghost" aria-haspopup="true" aria-expanded="false">Jump</button>
         <div id="jump" class="pop" hidden>
           <label class="datebox"><span class="cap">Date</span><input id="date-input" type="date" min="1801-01-01" max="2198-12-31"></label>
           <div class="pop-rule"></div>
@@ -96,7 +96,7 @@
         </div>
       </div>
       <div class="menu">
-        <button id="btn-view" class="ghost">View</button>
+        <button id="btn-view" class="ghost" aria-haspopup="true" aria-expanded="false">View</button>
         <div id="view" class="pop" hidden>
           <button id="btn-sizes" class="pop-item" title="True-scale sizes (T)"></button>
           <button id="btn-orbits" class="pop-item" title="Orbit trails (V)"></button>
@@ -110,9 +110,9 @@
   </div>
 </section>
 
-<div id="help" hidden>
-  <div class="help-card">
-    <h3>Keyboard</h3>
+<div id="help" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
+  <div class="help-card" id="help-card" tabindex="-1">
+    <h3 id="help-title">Keyboard</h3>
     <dl>
       <dt>0 to 9</dt><dd>Sun, then Mercury to Pluto</dd>
       <dt>M</dt><dd>Moon</dd>
@@ -142,5 +142,55 @@
 <pre id="diag" class="mono" hidden></pre>
 
 <script type="module" src="src/main.js"></script>
+<script>
+(function () {
+  window.cosmosFatal = function (title, detail) {
+    var f = document.getElementById("fatal");
+    if (!f || f.dataset.shown) return;
+    f.dataset.shown = "1";
+    f.textContent = "";
+    var box = document.createElement("div");
+    var mark = document.createElement("div");
+    mark.className = "intro-mark";
+    mark.textContent = "Cosmos";
+    var p = document.createElement("p");
+    p.textContent = title;
+    box.appendChild(mark);
+    box.appendChild(p);
+    if (detail) {
+      var d = document.createElement("p");
+      d.className = "dim mono";
+      d.textContent = detail;
+      box.appendChild(d);
+    }
+    f.appendChild(box);
+    f.hidden = false;
+  };
+  function early(message) {
+    if (!window.cosmosReady) window.cosmosFatal("Cosmos failed to start.", message);
+  }
+  window.addEventListener("error", function (e) {
+    early(e && e.message);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    early(e && e.reason && e.reason.message);
+  });
+  var entry = document.querySelector('script[type="module"]');
+  if (entry) {
+    entry.addEventListener("error", function () {
+      early("A required script could not be loaded. Check your connection and any content blockers.");
+    });
+  }
+  function watchdog() {
+    if (window.cosmosReady) return;
+    if (document.hidden) {
+      setTimeout(watchdog, 5000);
+      return;
+    }
+    early("Startup took too long.");
+  }
+  setTimeout(watchdog, 30000);
+})();
+</script>
 </body>
 </html>

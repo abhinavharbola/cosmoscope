@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { SUN, PLANETS, MOON, AU_KM, C_AU_S, POLES } from "./data.js";
 import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
 import { orbitWindowStart } from "./timeutil.js";
-import { moonSpinAngle } from "./frame.js";
+import { moonSpinAngle, nodeOffset, primeMeridianRad } from "./frame.js";
 import { buildMaps, sunMap, ringTexture, glowTexture, loadOverrides } from "./textures.js";
 import { createSky } from "./sky.js";
 
@@ -13,6 +13,7 @@ const OVERVIEW_DIST = 85;
 const INNER_DIST = 4.5;
 const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
+const SUN_INTENSITY = 7;
 const UP = new THREE.Vector3(0, 1, 0);
 const TEXTURE_ORDER = ["Earth", "Sun", "Jupiter", "Saturn", "Mars", "Moon", "Venus", "Mercury", "Neptune", "Uranus", "Pluto"];
 
@@ -20,6 +21,8 @@ export const VIEWS = {
   Overview: { dist: OVERVIEW_DIST },
   Inner: { dist: INNER_DIST },
 };
+
+const isView = (id) => Object.hasOwn(VIEWS, id);
 
 function artisticRadius(body) {
   if (body.id === "Sun") return 0.1;
@@ -62,14 +65,45 @@ function radialRing(inner, outer, tex) {
     uv.setXY(i, (r - inner) / (outer - inner), 0.5);
   }
   geo.rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshBasicMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     map: tex,
     transparent: true,
     side: THREE.DoubleSide,
     depthWrite: false,
     color: 0xe8e8e8,
+    roughness: 1,
+    metalness: 0,
   });
-  return new THREE.Mesh(geo, mat);
+  const sun = { value: new THREE.Vector3(1, 0, 0) };
+  patchRingShadow(mat, sun);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.sun = sun;
+  return mesh;
+}
+
+function patchRingShadow(mat, sunLocal) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSunLocal = sunLocal;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLocal;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocal = position;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uSunLocal;\nvarying vec3 vLocal;")
+      .replace(
+        "#include <opaque_fragment>",
+        [
+          "float ringShadow = 1.0;",
+          "vec3 sunDirLocal = normalize(uSunLocal);",
+          "float along = dot(-vLocal, sunDirLocal);",
+          "if (along > 0.0) {",
+          "  float miss = sqrt(max(dot(vLocal, vLocal) - along * along, 0.0));",
+          "  ringShadow = smoothstep(0.96, 1.04, miss);",
+          "}",
+          "outgoingLight *= ringShadow;",
+          "#include <opaque_fragment>",
+        ].join("\n")
+      );
+  };
 }
 
 function atmosphereMaterial(cfg) {
@@ -180,14 +214,13 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   controls.minDistance = 0.01;
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.1));
-  const sunLight = new THREE.PointLight(0xffffff, 7, 0, 0);
+  const sunLight = new THREE.PointLight(0xffffff, SUN_INTENSITY, 0, 0);
   scene.add(sunLight);
 
   const sky = createSky();
   scene.add(sky.object);
 
   const bodies = {};
-  const nightUniform = { value: new THREE.Vector3(0, 0, 1) };
   const state = {
     trueScale: false,
     showOrbits: true,
@@ -197,7 +230,6 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     trans: null,
     hoverId: null,
     orbitBuiltMs: null,
-    earthSunDir: new THREE.Vector3(1, 0, 0),
     degraded: false,
     textured: new Set(),
     textureMs: null,
@@ -214,6 +246,15 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     });
     Object.values(bodies).forEach((b) => {
       if (b.atmos) b.atmos.visible = false;
+    });
+    pulse.mesh.material = new THREE.MeshBasicMaterial({
+      color: 0xffd27a,
+      transparent: true,
+      opacity: 0.12,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
     });
   };
 
@@ -238,6 +279,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     let rings = null;
     if (data.rings) {
       rings = radialRing(data.rings.innerKm / data.radiusKm, data.rings.outerKm / data.radiusKm, ringTexture(data.rings));
+      patched.push(rings.material);
       tilt.add(rings);
     }
     group.add(tilt);
@@ -286,6 +328,14 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       orbitPts: null,
       orbitCol: null,
       orbitRGB: orbit ? new THREE.Color(data.palette[0]).lerp(new THREE.Color(0xffffff), 0.3) : null,
+      sunDir: new THREE.Vector3(1, 0, 0),
+      night: null,
+      ringSun: rings ? rings.userData.sun : null,
+      tiltInv: tilt.quaternion.clone().invert(),
+      phi: pole && data.W0 !== undefined ? nodeOffset(tilt.quaternion, pole[0]) : 0,
+      onScreen: false,
+      crowded: false,
+      cd: 0,
       pos: [0, 0, 0],
       radius: 0,
       sx: 0,
@@ -325,6 +375,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
   const pulse = {
     emitMs: null,
+    prevElapsed: 0,
+    prevDist: {},
     mesh: new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), pulseMaterial()),
     logged: new Set(),
     radius: 0,
@@ -335,20 +387,27 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   pulse.mesh.frustumCulled = false;
   scene.add(pulse.mesh);
 
-  function rebuildOrbits(startMs) {
+  let rebuildQueue = [];
+  let rebuildMs = 0;
+
+  function buildOrbit(p, startMs) {
+    const b = bodies[p.id];
+    const period = orbitalPeriodDays(p.id);
+    const n = period > 20000 ? 720 : 360;
+    const pts = orbitSamples(p.id, orbitWindowStart(startMs, period), period, n);
+    b.orbitN = n;
+    b.orbitPts = pts;
+    b.orbitCol = new Float32Array(n * 4);
+    b.orbit.geometry.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    b.orbit.geometry.setAttribute("color", new THREE.BufferAttribute(b.orbitCol, 4));
+    b.orbit.geometry.computeBoundingSphere();
+  }
+
+  function rebuildOrbits(startMs, immediate) {
     state.orbitBuiltMs = startMs;
-    PLANETS.forEach((p) => {
-      const b = bodies[p.id];
-      const period = orbitalPeriodDays(p.id);
-      const n = period > 20000 ? 720 : 360;
-      const pts = orbitSamples(p.id, orbitWindowStart(startMs, period), period, n);
-      b.orbitN = n;
-      b.orbitPts = pts;
-      b.orbitCol = new Float32Array(n * 4);
-      b.orbit.geometry.setAttribute("position", new THREE.BufferAttribute(pts, 3));
-      b.orbit.geometry.setAttribute("color", new THREE.BufferAttribute(b.orbitCol, 4));
-      b.orbit.geometry.computeBoundingSphere();
-    });
+    rebuildMs = startMs;
+    rebuildQueue = PLANETS.slice();
+    if (immediate) while (rebuildQueue.length) buildOrbit(rebuildQueue.shift(), rebuildMs);
   }
 
   function updateTrail(b) {
@@ -405,7 +464,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       mat.emissiveMap = maps.lights;
       mat.emissive.set(0xffffff);
       mat.emissiveIntensity = 1.5;
-      patchNightLights(mat, nightUniform);
+      b.night = { value: new THREE.Vector3(0, 0, 1) };
+      patchNightLights(mat, b.night);
       patched.push(mat);
     }
     mat.needsUpdate = true;
@@ -448,21 +508,24 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function desiredDistance(id) {
-    if (VIEWS[id]) return VIEWS[id].dist;
+    if (isView(id)) return VIEWS[id].dist;
     const b = bodies[id];
     const ringFactor = b.data.rings ? 2.4 : 1;
     return Math.max(b.radius * 4 * ringFactor, 1e-7);
   }
 
   function setFocus(id) {
+    if (!isView(id) && !Object.hasOwn(bodies, id)) return;
     state.focus = id;
     const fromDist = camera.position.length();
     state.trans = { from: state.center.slice(), t0: performance.now(), dur: 2200, fromDist, id };
-    controls.minDistance = VIEWS[id] ? 0.01 : displayRadius(bodies[id].data) * 1.15;
+    controls.minDistance = isView(id) ? 0.01 : displayRadius(bodies[id].data) * 1.15;
   }
 
   function update(simMs, timeScale, nowMs) {
-    if (state.orbitBuiltMs === null || Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs);
+    if (state.orbitBuiltMs === null) rebuildOrbits(simMs, true);
+    else if (Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs, false);
+    for (let i = 0; i < 2 && rebuildQueue.length; i++) buildOrbit(rebuildQueue.shift(), rebuildMs);
 
     const earth = helioPosition("Earth", simMs);
     for (const p of PLANETS) bodies[p.id].pos = helioPosition(p.id, simMs);
@@ -477,7 +540,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
     for (const id of Object.keys(bodies)) bodies[id].radius = displayRadius(bodies[id].data);
 
-    const targetPos = VIEWS[state.focus] ? [0, 0, 0] : bodies[state.focus].pos;
+    const targetPos = isView(state.focus) ? [0, 0, 0] : bodies[state.focus].pos;
 
     if (state.trans) {
       const t = Math.min(1, (nowMs - state.trans.t0) / state.trans.dur);
@@ -524,7 +587,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       } else if (id === "Earth") {
         b.mesh.rotation.y = gmst;
       } else {
-        b.mesh.rotation.y = spinSign * ((simMs / 1000) / periodSec) * 2 * Math.PI;
+        b.mesh.rotation.y = primeMeridianRad(b.data.W0, b.data.Wdot, simMs) + b.phi;
       }
       if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y + (nowMs / 1000) * 0.0008;
 
@@ -532,11 +595,12 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const px = (b.radius / Math.max(camToBody, 1e-12)) * (halfH / tanHalf);
       b.marker.visible = px < 3;
 
+      tmp.set(sunRel.x - rx, sunRel.y - ry, sunRel.z - rz).normalize();
+      b.sunDir.copy(tmp);
+      if (b.ringSun) b.ringSun.value.copy(tmp).applyQuaternion(b.tiltInv);
       if (b.atmos) {
         b.atmos.scale.setScalar(b.radius * shellScale);
-        tmp.set(sunRel.x - rx, sunRel.y - ry, sunRel.z - rz).normalize();
         b.atmos.material.uniforms.uSun.value.copy(tmp);
-        if (id === "Earth") state.earthSunDir.copy(tmp);
       }
 
       if (b.orbit) {
@@ -552,10 +616,16 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       b.sy = ((1 - tmp.y) / 2) * window.innerHeight;
       b.sr = px;
       const onScreen = tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+      b.onScreen = onScreen;
+      b.cd = camToBody;
+      b.crowded = false;
       let show = state.showLabels && onScreen;
       if (id === "Moon" && state.focus !== "Moon") {
         const e = bodies.Earth;
-        if (Math.hypot(b.sx - e.sx, b.sy - e.sy) < 56) show = false;
+        if (Math.hypot(b.sx - e.sx, b.sy - e.sy) < 56) {
+          show = false;
+          b.crowded = true;
+        }
       }
       if (state.focus === id && px > 70) show = false;
       b.shown = show;
@@ -570,6 +640,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     glow.position.copy(bodies.Sun.group.position);
     glow.scale.setScalar(bodies.Sun.radius * 7);
     sunLight.position.copy(bodies.Sun.group.position);
+    const lit = isView(state.focus) ? null : state.focus === "Moon" ? bodies.Earth : bodies[state.focus];
+    const lightD = lit && lit.data.id !== "Sun" ? Math.max(0.39, distanceAU(lit.pos)) : 1;
+    const wantI = SUN_INTENSITY * Math.pow(1 / lightD, 0.6);
+    sunLight.intensity += (wantI - sunLight.intensity) * 0.06;
 
     moonOrbit.visible = state.showOrbits;
     moonOrbit.position.set(bodies.Earth.pos[0] - c[0], bodies.Earth.pos[1] - c[1], bodies.Earth.pos[2] - c[2]);
@@ -596,13 +670,23 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
         pulse.mesh.position.set(-c[0], -c[1], -c[2]);
         pulse.mesh.scale.setScalar(Math.max(pulse.radius, 1e-9));
         for (const p of PLANETS) {
-          if (pulse.logged.has(p.id)) continue;
           const d = distanceAU(bodies[p.id].pos);
-          if (pulse.radius >= d) {
+          if (!pulse.logged.has(p.id) && pulse.radius >= d) {
+            const prevD = pulse.prevDist[p.id] ?? d;
+            const f0 = pulse.prevElapsed * C_AU_S - prevD;
+            const f1 = elapsed * C_AU_S - d;
+            const frac = f1 - f0 > 0 ? Math.min(1, Math.max(0, -f0 / (f1 - f0))) : 1;
             pulse.logged.add(p.id);
-            arrivals.push({ id: p.id, name: p.name, seconds: d / C_AU_S, au: d });
+            arrivals.push({
+              id: p.id,
+              name: p.name,
+              seconds: pulse.prevElapsed + frac * (elapsed - pulse.prevElapsed),
+              au: d,
+            });
           }
+          pulse.prevDist[p.id] = d;
         }
+        pulse.prevElapsed = elapsed;
       }
     }
 
@@ -617,6 +701,9 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     pulse.emitMs = simMs;
     pulse.logged = new Set();
     pulse.radius = 0;
+    pulse.prevElapsed = 0;
+    pulse.prevDist = {};
+    for (const p of PLANETS) pulse.prevDist[p.id] = distanceAU(bodies[p.id].pos);
   }
 
   function stopPulse() {
@@ -625,30 +712,35 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function setTrueScale(v) {
-    const focused = bodies[state.focus];
+    const focused = Object.hasOwn(bodies, state.focus) ? bodies[state.focus] : null;
     const before = focused ? focused.radius : 0;
     state.trueScale = v;
     if (focused) {
       const after = displayRadius(focused.data);
       if (before > 0 && after > 0) camera.position.multiplyScalar(after / before);
     }
-    controls.minDistance = VIEWS[state.focus] ? 0.01 : displayRadius(bodies[state.focus].data) * 1.15;
+    controls.minDistance = isView(state.focus) ? 0.01 : displayRadius(bodies[state.focus].data) * 1.15;
   }
 
   function pick(x, y) {
-    let best = null;
-    let bestD = Infinity;
+    let front = null;
+    let frontCd = Infinity;
+    let near = null;
+    let nearD = Infinity;
     for (const id of Object.keys(bodies)) {
       const b = bodies[id];
-      if (!b.shown && id === "Moon") continue;
+      if (!b.onScreen || b.crowded) continue;
       const d = Math.hypot(b.sx - x, b.sy - y);
-      const reach = Math.max(16, b.sr);
-      if (d < reach && d < bestD) {
-        best = id;
-        bestD = d;
+      if (b.sr > 4 && d < b.sr && b.cd < frontCd) {
+        front = id;
+        frontCd = b.cd;
+      }
+      if (d < Math.max(16, b.sr) && d < nearD) {
+        near = id;
+        nearD = d;
       }
     }
-    return best;
+    return front || near;
   }
 
   let down = null;
@@ -696,7 +788,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   function render() {
     controls.update();
     camera.updateMatrixWorld();
-    nightUniform.value.copy(state.earthSunDir).transformDirection(camera.matrixWorldInverse);
+    for (const id of Object.keys(bodies)) {
+      const b = bodies[id];
+      if (b.night) b.night.value.copy(b.sunDir).transformDirection(camera.matrixWorldInverse);
+    }
     renderer.render(scene, camera);
   }
 

@@ -1,4 +1,4 @@
-import { loadApod, loadNeo, loadFlares, getApiKey, setApiKey } from "./nasa.js";
+import { loadApod, loadNeo, loadFlares, getApiKey, setApiKey, clearCache } from "./nasa.js";
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -21,9 +21,14 @@ function flareClassNote(cls) {
 }
 
 export function createDispatch(els) {
+  let seq = 0;
+
   async function load() {
+    const mine = ++seq;
     els.body.innerHTML = `<p class="dim">Contacting NASA</p>`;
-    const [apod, neo, flr] = await Promise.allSettled([loadApod(), loadNeo(), loadFlares()]);
+    const results = await Promise.allSettled([loadApod(), loadNeo(), loadFlares()]);
+    if (mine !== seq) return;
+    const [apod, neo, flr] = results;
     const parts = [];
 
     if (apod.status === "fulfilled") {
@@ -42,11 +47,11 @@ export function createDispatch(els) {
       const n = neo.value.data;
       const c = n.closest;
       parts.push(
-        `<section><h4>Near-Earth objects today</h4><p class="big">${n.count}</p>` +
+        `<section><h4>Near-Earth objects today</h4><p class="big">${Number(n.count)}</p>` +
           (c
             ? `<p class="dim">Closest: ${esc(c.name)} at ${c.lunarDistance.toFixed(1)} lunar distances, ${c.speedKmS.toFixed(1)} km/s, up to ${Math.round(
                 c.diameterM
-              )} m across.${n.hazardous ? ` ${n.hazardous} flagged potentially hazardous.` : ""}</p>`
+              )} m across.${n.hazardous ? ` ${Number(n.hazardous)} flagged potentially hazardous.` : ""}</p>`
             : "") +
           `</section>`
       );
@@ -54,21 +59,23 @@ export function createDispatch(els) {
     if (flr.status === "fulfilled") {
       const f = flr.value.data;
       parts.push(
-        `<section><h4>Solar flares, 14 days</h4><p class="big">${f.count}</p>` +
+        `<section><h4>Solar flares, 14 days</h4><p class="big">${Number(f.count)}</p>` +
           (f.latest
             ? `<p class="dim">Latest: class ${esc(f.latest.cls)} (${flareClassNote(f.latest.cls)}), peak ${esc(
-                f.latest.peak.replace("T", " ").replace("Z", " UTC")
+                String(f.latest.peak).replace("T", " ").replace("Z", " UTC")
               )}.</p>`
             : `<p class="dim">No flares recorded in the window.</p>`) +
           `</section>`
       );
     }
-    const failed = [apod, neo, flr].filter((r) => r.status === "rejected").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const stale = results.some((r) => r.status === "fulfilled" && r.value.stale);
     if (failed) {
       parts.push(
         `<p class="dim">${failed} of 3 feeds did not load. The shared DEMO_KEY is rate limited. A free key from api.nasa.gov fixes that.</p>`
       );
     }
+    if (stale) parts.push(`<p class="dim">Some data is cached from an earlier visit.</p>`);
     els.body.innerHTML = parts.join("");
     els.badge.textContent = neo.status === "fulfilled" ? String(neo.value.data.count) : "";
   }
@@ -76,13 +83,7 @@ export function createDispatch(els) {
   els.key.value = getApiKey() === "DEMO_KEY" ? "" : getApiKey();
   els.save.addEventListener("click", () => {
     setApiKey(els.key.value);
-    try {
-      Object.keys(localStorage)
-        .filter((k) => k.startsWith("nasa_cache_"))
-        .forEach((k) => localStorage.removeItem(k));
-    } catch {
-      return load();
-    }
+    clearCache();
     return load();
   });
   els.toggle.addEventListener("click", () => {

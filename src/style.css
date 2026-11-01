@@ -33,7 +33,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .dim { color: var(--dim); }
 .cap {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
@@ -69,7 +69,7 @@ button:focus:not(:focus-visible) { outline: none; }
   background: none;
   pointer-events: auto;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(233, 228, 216, 0.7);
@@ -95,6 +95,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 #left > * { pointer-events: auto; }
+.help-card:focus { outline: none; }
 #mast { flex: none; }
 
 .wordmark {
@@ -135,7 +136,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .state {
   margin-top: 4px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--dim);
 }
@@ -172,7 +173,7 @@ button:focus:not(:focus-visible) { outline: none; }
   border: 0;
   background: none;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
@@ -196,7 +197,7 @@ button:focus:not(:focus-visible) { outline: none; }
 
 .body-row:hover { color: #fff; border-left-color: var(--dim); }
 .body-row.active { color: var(--amber); border-left-color: var(--amber); }
-.body-row .au { font-family: var(--mono); font-size: 10.5px; color: var(--dim); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 0.15s; }
+.body-row .au { font-family: var(--mono); font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 0.15s; }
 .body-row:hover .au, .body-row.active .au { opacity: 1; }
 
 .index-list { display: flex; flex-direction: column; margin-top: 8px; }
@@ -218,7 +219,7 @@ button:focus:not(:focus-visible) { outline: none; }
   background: var(--amber);
   color: #1a1204;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -238,7 +239,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 #dispatch section { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--faint); }
-#dispatch h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); font-weight: 400; }
+#dispatch h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); font-weight: 400; }
 #dispatch img { width: 100%; display: block; margin-bottom: 8px; }
 #dispatch p { margin: 4px 0; line-height: 1.4; }
 #dispatch .big { font-family: var(--serif); font-size: 34px; line-height: 1; margin: 2px 0 6px; }
@@ -302,7 +303,7 @@ button:focus:not(:focus-visible) { outline: none; }
 
 #plate-facts { margin: 16px 0 8px; font-family: var(--serif); font-size: 18px; line-height: 1.25; }
 .light { margin: 8px 0; color: var(--amber); font-family: var(--mono); font-size: 11px; line-height: 1.55; }
-.src { margin: 10px 0 0; color: var(--dim); font-size: 10.5px; line-height: 1.5; }
+.src { margin: 10px 0 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
 .src a { color: var(--dim); }
 
 #dock {
@@ -403,7 +404,7 @@ button:focus:not(:focus-visible) { outline: none; }
   border: 0;
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -441,7 +442,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .pop-item:hover, #moments button:hover { background: rgba(233, 228, 216, 0.06); }
 .pop-item b { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--dim); }
 .pop-item.on b { color: var(--amber); }
-#moments small { color: var(--dim); font-family: var(--mono); font-size: 10.5px; }
+#moments small { color: var(--dim); font-family: var(--mono); font-size: 11px; }
 #moments button { display: block; }
 #moments button small { display: block; }
 
@@ -470,7 +471,7 @@ button:focus:not(:focus-visible) { outline: none; }
 
 .tick { position: absolute; top: 0; display: none; }
 .tick i { position: absolute; left: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--bg); border: 1px solid var(--dim); }
-.tick b { position: absolute; top: 9px; left: 0; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--dim); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.tick b { position: absolute; top: 9px; left: 0; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--dim); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .tick.reached i { background: var(--amber); border-color: var(--amber); }
 .tick.reached b { color: var(--ink); }
 
@@ -527,7 +528,7 @@ button:focus:not(:focus-visible) { outline: none; }
 
 @media (max-width: 1100px) {
   #dock { width: calc(100vw - 52px); min-width: 0; }
-  #left { width: 190px; }
+  #left { width: 190px; bottom: 150px; }
   #plate { max-height: calc(100vh - 300px); }
 }
 

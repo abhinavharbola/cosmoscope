@@ -1,5 +1,5 @@
 export const MIN_MS = Date.UTC(1801, 0, 1);
-export const MAX_MS = Date.UTC(2198, 11, 31);
+export const MAX_MS = Date.UTC(2198, 11, 31, 23, 59, 59, 999);
 
 export function clampMs(ms) {
   const span = MAX_MS - MIN_MS;

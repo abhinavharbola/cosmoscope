@@ -1,6 +1,14 @@
 import * as THREE from "three";
 
-const tick = () => new Promise((r) => setTimeout(r, 0));
+const channel = typeof window !== "undefined" && typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
+
+const tick = () =>
+  channel
+    ? new Promise((r) => {
+        channel.port1.onmessage = () => r();
+        channel.port2.postMessage(0);
+      })
+    : new Promise((r) => setTimeout(r, 0));
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -143,6 +151,22 @@ function toTexture(canvas, color = true) {
   if (color) tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   return tex;
+}
+
+function heightCanvas(src) {
+  const w = src.width;
+  const h = src.height;
+  const img = src.getContext("2d").getImageData(0, 0, w, h);
+  const out = makeCanvas(w, h);
+  const octx = out.getContext("2d");
+  const dst = octx.createImageData(w, h);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const l = 0.2126 * img.data[i] + 0.7152 * img.data[i + 1] + 0.0722 * img.data[i + 2];
+    dst.data[i] = dst.data[i + 1] = dst.data[i + 2] = l;
+    dst.data[i + 3] = 255;
+  }
+  octx.putImageData(dst, 0, 0);
+  return out;
 }
 
 function craters(canvas, rand, count, strength, maxR) {
@@ -340,7 +364,7 @@ async function marsMap(body) {
     put(outs[0], col);
   });
   craters(c, rand, 140, 0.7, 26);
-  return { map: toTexture(c), bump: toTexture(c, false) };
+  return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
 
 async function moonMap(body) {
@@ -357,7 +381,7 @@ async function moonMap(body) {
     put(outs[0], col);
   });
   craters(c, rand, 900, 0.9, 36);
-  return { map: toTexture(c), bump: toTexture(c, false) };
+  return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
 
 async function mercuryMap(body) {
@@ -369,7 +393,7 @@ async function mercuryMap(body) {
     put(outs[0], samplePalette(pal, clamp(n * 1.2 - 0.05)));
   });
   craters(c, rand, 800, 0.9, 34);
-  return { map: toTexture(c), bump: toTexture(c, false) };
+  return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
 
 async function plutoMap(body) {
@@ -388,7 +412,7 @@ async function plutoMap(body) {
     put(outs[0], col);
   });
   craters(c, rand, 60, 0.5, 24);
-  return { map: toTexture(c), bump: toTexture(c, false) };
+  return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
 
 export async function buildMaps(body) {
@@ -495,16 +519,18 @@ export async function loadOverrides() {
   const out = {};
   for (const [id, files] of Object.entries(manifest)) {
     out[id] = {};
-    for (const [slot, file] of Object.entries(files)) {
-      try {
-        const tex = await loader.loadAsync(`textures/${file}`);
-        tex.colorSpace = slot === "rough" || slot === "bump" ? THREE.NoColorSpace : THREE.SRGBColorSpace;
-        tex.anisotropy = 8;
-        out[id][slot] = tex;
-      } catch {
-        continue;
-      }
-    }
+    await Promise.all(
+      Object.entries(files).map(async ([slot, file]) => {
+        try {
+          const tex = await loader.loadAsync(`textures/${file}`);
+          tex.colorSpace = slot === "rough" || slot === "bump" ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+          tex.anisotropy = 8;
+          out[id][slot] = tex;
+        } catch {
+          return;
+        }
+      })
+    );
   }
   return out;
 }

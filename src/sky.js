@@ -44,7 +44,7 @@ export function milkyWayTexture() {
   const img = ctx.createImageData(w, h);
   const rand = mulberry(2026);
   const ns = [noiseGrid(rand, 6), noiseGrid(rand, 14), noiseGrid(rand, 32), noiseGrid(rand, 80)];
-  const dust = [noiseGrid(rand, 8), noiseGrid(rand, 20), noiseGrid(rand, 50)];
+  const dust = [noiseGrid(rand, 12), noiseGrid(rand, 30), noiseGrid(rand, 75)];
   for (let y = 0; y < h; y++) {
     const v = (y + 0.5) / h;
     const b = (0.5 - v) * Math.PI;
@@ -67,7 +67,7 @@ export function milkyWayTexture() {
       amp = 0.5;
       norm = 0;
       for (let i = 0; i < dust.length; i++) {
-        dn += dust[i](u * 1.5, v) * amp;
+        dn += dust[i](u, v * 0.65) * amp;
         norm += amp;
         amp *= 0.55;
       }

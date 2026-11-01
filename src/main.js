@@ -1,5 +1,7 @@
 import { PLANETS, SUN, MOON, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
-import { clampMs, distanceAU, separationAU, moonOffset, MIN_MS, MAX_MS } from "./ephemeris.js";
+import { clampMs, distanceAU, separationAU, moonOffset } from "./ephemeris.js";
+import { inputDate, parseInputDate } from "./dates.js";
+import { parseHash, buildHash, SCALE_MIN, SCALE_MAX } from "./hash.js";
 import { createWorld, VIEWS } from "./world.js";
 import { almanac } from "./almanac.js";
 import { createRuler } from "./ruler.js";
@@ -25,11 +27,11 @@ const PRESETS = [
   ["Decade", 315576000],
 ];
 
-const SCALE_MIN = 1;
-const SCALE_MAX = 315576000;
 const SLIDER_MAX = 1000;
 
 const ALL = { Sun: SUN, Moon: MOON, ...Object.fromEntries(PLANETS.map((p) => [p.id, p])) };
+
+const has = (o, k) => Object.hasOwn(o, k);
 
 const sim = { ms: Date.now(), scale: 3600, direction: 1, paused: false, tz: "local" };
 
@@ -50,9 +52,12 @@ try {
     },
   });
 } catch (err) {
-  const fatal = $("fatal");
-  fatal.hidden = false;
-  fatal.innerHTML = `<div><div class="intro-mark">Cosmos</div><p>This browser could not start WebGL.<br>Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration enabled.</p></div>`;
+  if (window.cosmosFatal) {
+    window.cosmosFatal(
+      "Cosmos could not start the 3D view. Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration enabled.",
+      err && err.message
+    );
+  }
   throw err;
 }
 
@@ -161,25 +166,14 @@ $("clock").addEventListener("click", () => {
     localStorage.setItem("cosmos_tz", sim.tz);
   } catch {
     return;
+  } finally {
+    renderClock();
   }
 });
 
-function inputDate(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, "0");
-  if (sim.tz === "utc") return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function parseInputDate(v) {
-  const [y, m, d] = v.split("-").map(Number);
-  if (!y || !m || !d) return NaN;
-  return sim.tz === "utc" ? Date.UTC(y, m - 1, d, 12) : new Date(y, m - 1, d, 12).getTime();
-}
-
 $("date-input").addEventListener("change", (e) => {
-  const ms = parseInputDate(e.target.value);
-  if (Number.isFinite(ms)) sim.ms = clampMs(ms);
+  const ms = parseInputDate(e.target.value, sim.tz);
+  if (Number.isFinite(ms)) sim.ms = ms;
 });
 
 const menus = [
@@ -190,7 +184,12 @@ const menus = [
 function closeMenus() {
   menus.forEach((m) => {
     m.pop.hidden = true;
+    m.btn.setAttribute("aria-expanded", "false");
   });
+}
+
+function menusOpen() {
+  return menus.some((m) => !m.pop.hidden);
 }
 
 menus.forEach((m) => {
@@ -199,12 +198,16 @@ menus.forEach((m) => {
     const open = m.pop.hidden;
     closeMenus();
     m.pop.hidden = !open;
+    m.btn.setAttribute("aria-expanded", String(!m.pop.hidden));
   });
 });
 
 document.addEventListener("click", (e) => {
   menus.forEach((m) => {
-    if (!m.pop.hidden && !m.pop.contains(e.target)) m.pop.hidden = true;
+    if (!m.pop.hidden && !m.pop.contains(e.target)) {
+      m.pop.hidden = true;
+      m.btn.setAttribute("aria-expanded", "false");
+    }
   });
 });
 
@@ -296,9 +299,21 @@ $("btn-pulse").addEventListener("click", togglePulse);
 $("ruler-close").addEventListener("click", stopPulse);
 
 const helpEl = $("help");
+let helpReturn = null;
 function toggleHelp(force) {
-  helpEl.hidden = force === undefined ? !helpEl.hidden : !force;
+  const open = force === undefined ? helpEl.hidden : force;
+  helpEl.hidden = !open;
+  if (open) {
+    helpReturn = document.activeElement;
+    $("help-card").focus();
+  } else if (helpReturn && helpReturn.focus) {
+    helpReturn.focus();
+    helpReturn = null;
+  }
 }
+helpEl.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") e.preventDefault();
+});
 $("btn-help").addEventListener("click", () => {
   closeMenus();
   toggleHelp(true);
@@ -349,7 +364,7 @@ function row(label, value, opts = {}) {
 
 function renderPlate(id) {
   const plate = $("plate");
-  const d = ALL[id];
+  const d = has(ALL, id) ? ALL[id] : null;
   if (!d) {
     plate.hidden = true;
     return;
@@ -409,16 +424,16 @@ function renderSource(id) {
 }
 
 function focusOn(id) {
-  if (!VIEWS[id] && !world.bodies[id]) return;
+  if (!has(VIEWS, id) && !has(world.bodies, id)) return;
   world.setFocus(id);
   Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
   renderPlate(id);
-  document.title = VIEWS[id] ? "Cosmos" : `${id} | Cosmos`;
+  document.title = has(VIEWS, id) ? "Cosmos" : `${id} | Cosmos`;
 }
 
 function updateLive() {
   const id = world.state.focus;
-  const d = ALL[id];
+  const d = has(ALL, id) ? ALL[id] : null;
   if (!d) return;
   const bodies = world.bodies;
   const sunEl = $("live-sun");
@@ -486,7 +501,7 @@ function renderDock() {
   set(toggles.labels, s.showLabels, "Labels", s.showLabels ? "On" : "Off");
   const input = $("date-input");
   if (document.activeElement !== input) {
-    const iso = inputDate(sim.ms);
+    const iso = inputDate(sim.ms, sim.tz);
     if (input.value !== iso) input.value = iso;
   }
 }
@@ -502,10 +517,8 @@ window.addEventListener("keydown", (e) => {
   const k = e.key;
   if (k === "Escape") {
     if (!helpEl.hidden) toggleHelp(false);
-    else {
-      closeMenus();
-      focusOn("Overview");
-    }
+    else if (menusOpen()) closeMenus();
+    else focusOn("Overview");
     return;
   }
   if (k === " ") {
@@ -524,27 +537,24 @@ window.addEventListener("keydown", (e) => {
   if (lower === "v") return toggleOrbits();
   if (lower === "k") return toggleLabels();
   if (lower === "d") return toggleDiag();
-  if (KEY_MAP[lower]) focusOn(KEY_MAP[lower]);
+  if (has(KEY_MAP, lower)) focusOn(KEY_MAP[lower]);
+});
+
+window.addEventListener("keyup", (e) => {
+  const tag = e.target && e.target.tagName;
+  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
 });
 
 function readHash() {
-  const p = new URLSearchParams(location.hash.slice(1));
-  const f = p.get("f");
-  const s = parseFloat(p.get("s"));
-  const t = Date.parse(p.get("t") || "");
-  if (Number.isFinite(t) && t >= MIN_MS && t <= MAX_MS) sim.ms = t;
-  if (Number.isFinite(s) && s >= SCALE_MIN && s <= SCALE_MAX) sim.scale = s;
-  return f && (VIEWS[f] || world.bodies[f]) ? f : null;
+  const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f));
+  if (h.ms !== null) sim.ms = h.ms;
+  if (h.scale !== null) sim.scale = h.scale;
+  return h.focus;
 }
 
 let lastHash = "";
 function writeHash() {
-  const p = new URLSearchParams();
-  const f = world.state.focus;
-  if (f !== "Overview") p.set("f", f);
-  p.set("s", String(Math.round(sim.scale)));
-  if (Math.abs(sim.ms - Date.now()) > 120000) p.set("t", new Date(sim.ms).toISOString().slice(0, 19) + "Z");
-  const h = p.toString();
+  const h = buildHash(world.state.focus, sim.scale, sim.ms, Date.now());
   if (h !== lastHash) {
     lastHash = h;
     try {
@@ -576,7 +586,7 @@ world
   .finally(() => {
     hideIntro();
     const id = world.state.focus;
-    if (ALL[id]) renderSource(id);
+    if (has(ALL, id)) renderSource(id);
   });
 setTimeout(hideIntro, 25000);
 
@@ -584,8 +594,9 @@ let last = performance.now();
 let fpsAvg = 60;
 let slowTick = 0;
 let hashTick = 0;
+let clockTick = 0;
 
-function frame(now) {
+function step(now) {
   const rawDt = (now - last) / 1000;
   const dt = Math.min(0.1, rawDt);
   last = now;
@@ -609,7 +620,10 @@ function frame(now) {
     }
   }
 
-  renderClock();
+  if (now - clockTick > 80) {
+    clockTick = now;
+    renderClock();
+  }
   renderDock();
 
   if (now - slowTick > 400) {
@@ -625,6 +639,23 @@ function frame(now) {
   }
 
   world.render();
+}
+
+let frameErrors = 0;
+
+function frame(now) {
+  try {
+    step(now);
+    frameErrors = 0;
+    window.cosmosReady = true;
+  } catch (err) {
+    frameErrors += 1;
+    console.error(err);
+    if (frameErrors >= 30) {
+      if (window.cosmosFatal) window.cosmosFatal("Cosmos stopped because of a repeated error.", err && err.message);
+      return;
+    }
+  }
   requestAnimationFrame(frame);
 }
 
