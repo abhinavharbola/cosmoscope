@@ -1,0 +1,64 @@
+{
+  "Earth": {
+    "credit": "NASA Earth Observatory: Blue Marble Next Generation, Black Marble 2012, cloud composite",
+    "license": "Public domain",
+    "url": "https://visibleearth.nasa.gov/",
+    "centerLon": 0,
+    "slots": {
+      "map": { "product": "Blue Marble Next Generation, topography and bathymetry, 21600 x 10800", "url": "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x21600x10800.jpg" },
+      "lights": { "product": "Black Marble 2012, land, ocean and ice, 13500 x 6750", "url": "https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.13500x6750.jpg" },
+      "cloudMask": { "product": "Cloud composite, 2048 x 1024, used as an opacity mask", "url": "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_2048.jpg" }
+    }
+  },
+  "Moon": {
+    "credit": "NASA/GSFC/Arizona State University: LRO LROC WAC color mosaic, LOLA elevation",
+    "license": "Public domain",
+    "url": "https://svs.gsfc.nasa.gov/4720/",
+    "centerLon": 0,
+    "bumpScale": 3,
+    "slots": {
+      "map": { "product": "LROC WAC color mosaic with poles, SVS 4720", "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_8k.tif" },
+      "bump": { "product": "LOLA elevation, 16 pixels per degree, SVS 4720", "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_16_uint.tif" }
+    }
+  },
+  "Mars": {
+    "credit": "NASA/JPL/USGS: Viking MDIM 2.1 color mosaic, MGS MOLA elevation",
+    "license": "Public domain",
+    "url": "https://astrogeology.usgs.gov/",
+    "centerLon": 0,
+    "bumpScale": 3,
+    "slots": {
+      "map": { "product": "Mars Viking MDIM 2.1 Colorized Global Mosaic, 232 m", "url": null },
+      "bump": { "product": "Mars MGS MOLA DEM, 463 m", "url": null }
+    }
+  },
+  "Mercury": {
+    "credit": "NASA/JHUAPL/Carnegie Institution of Washington/USGS: MESSENGER MDIS global mosaic",
+    "license": "Public domain",
+    "url": "https://astrogeology.usgs.gov/",
+    "centerLon": 0,
+    "slots": {
+      "map": { "product": "Mercury MESSENGER MDIS Basemap Enhanced Color Mosaic, Global, 665 m", "url": null }
+    }
+  },
+  "Venus": {
+    "credit": "NASA/JPL/USGS: Magellan SAR global mosaic",
+    "license": "Public domain",
+    "note": "Radar view of the surface beneath the clouds, colored by NASA.",
+    "url": "https://astrogeology.usgs.gov/",
+    "centerLon": 0,
+    "slots": {
+      "map": { "product": "Venus Magellan global C3-MDIR mosaic, 4.6 km", "url": null }
+    }
+  },
+  "Pluto": {
+    "credit": "NASA/JHUAPL/SwRI: New Horizons LORRI and MVIC global mosaic",
+    "license": "Public domain",
+    "note": "The hemisphere New Horizons did not image at high resolution is low detail.",
+    "url": "https://astrogeology.usgs.gov/",
+    "centerLon": 0,
+    "slots": {
+      "map": { "product": "Pluto New Horizons LORRI-MVIC global mosaic, 300 m", "url": null }
+    }
+  }
+}
