@@ -133,7 +133,7 @@ export const PLANETS = [
   {
     id: "Jupiter",
     W0: 284.95,
-    Wdot: 870.536,
+    Wdot: 870.536642,
     name: "Jupiter",
     type: "Gas giant",
     radiusKm: 69911,

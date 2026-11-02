@@ -533,7 +533,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 @media (max-width: 860px) {
-  #index, #almanac, .almanac-title { display: none; }
+  .index-list, #almanac, .almanac-title { display: none; }
   #left { right: 26px; width: auto; bottom: auto; }
   #plate { top: auto; bottom: 140px; left: 26px; right: 26px; width: auto; max-height: 30vh; border-left: 0; border-top: 1px solid var(--faint); padding: 10px 0 0; }
   .dock-row { flex-wrap: wrap; gap: 10px 16px; }

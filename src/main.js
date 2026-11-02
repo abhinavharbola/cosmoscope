@@ -75,7 +75,7 @@ const ruler = createRuler({
   last: $("ruler-last"),
 });
 
-const dispatch = createDispatch({
+createDispatch({
   body: $("dispatch-body"),
   badge: $("dispatch-badge"),
   key: $("api-key"),
@@ -503,13 +503,17 @@ function updateLive() {
   setText($("plate-light"), lightText);
 }
 
+function isLive() {
+  return !sim.paused && sim.direction > 0 && sim.scale < 1.05 && Math.abs(sim.ms - Date.now()) < 3000;
+}
+
 function renderClock() {
   const c = clock(sim.ms, sim.tz);
   setText($("clock-date"), c.date);
   setText($("clock-time"), c.time);
   setText($("clock-zone"), c.zone);
   const offset = sim.ms - Date.now();
-  const live = !sim.paused && sim.direction > 0 && sim.scale < 1.05 && Math.abs(offset) < 3000;
+  const live = isLive();
   const state = $("clock-state");
   let text;
   if (live) text = "Live";
@@ -534,7 +538,7 @@ function renderDock() {
   const nearest = nearestPreset(sim.scale);
   const exact = Math.abs(Math.log(sim.scale / PRESETS[nearest][1])) < 0.03;
   presetButtons.forEach((b, i) => b.classList.toggle("on", exact && i === nearest));
-  $("btn-play").innerHTML = sim.paused ? ICON.play : ICON.pause;
+  setHTML($("btn-play"), sim.paused ? ICON.play : ICON.pause);
   $("btn-reverse").classList.toggle("active", sim.direction < 0);
   const s = world.state;
   const set = (el, on, label, value) => {
@@ -569,7 +573,13 @@ window.addEventListener("keydown", (e) => {
     else focusOn("Overview");
     return;
   }
+  if (e.repeat) return;
+  if (!helpEl.hidden) {
+    if (k === "?") toggleHelp(false);
+    return;
+  }
   if (k === " ") {
+    if (tag === "BUTTON") return;
     e.preventDefault();
     togglePause();
     return;
@@ -590,7 +600,7 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   const tag = e.target && e.target.tagName;
-  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
+  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON") e.preventDefault();
 });
 
 function readHash() {
@@ -613,13 +623,19 @@ function writeHash() {
   }
 }
 
+window.addEventListener("hashchange", () => {
+  if (location.hash.replace(/^#/, "") === lastHash) return;
+  const focus = readHash();
+  setScale(sim.scale);
+  focusOn(focus || "Overview");
+});
+
 const startFocus = readHash();
 setScale(sim.scale);
 renderPlate("Overview");
 navButtons.Overview.classList.add("active");
 if (startFocus && startFocus !== "Overview") focusOn(startFocus);
 
-dispatch.load();
 
 function hideIntro() {
   const intro = $("intro");
@@ -643,6 +659,7 @@ let fpsAvg = 60;
 let slowTick = 0;
 let hashTick = 0;
 let clockTick = 0;
+let liveBefore = false;
 
 function step(now) {
   const rawDt = (now - last) / 1000;
@@ -650,7 +667,18 @@ function step(now) {
   last = now;
   if (rawDt > 0) fpsAvg += (1 / rawDt - fpsAvg) * 0.05;
 
-  if (!sim.paused) sim.ms = clampMs(sim.ms + sim.direction * sim.scale * dt * 1000);
+  const stepDt = liveBefore ? Math.min(rawDt, 3600) : dt;
+  if (!sim.paused) {
+    const next = sim.ms + sim.direction * sim.scale * stepDt * 1000;
+    const wrapped = clampMs(next);
+    if (wrapped !== next && pulseActive) {
+      world.stopPulse();
+      pulseActive = false;
+      ruler.log("Pulse stopped because the clock wrapped");
+    }
+    sim.ms = wrapped;
+  }
+  liveBefore = isLive();
 
   const out = world.update(sim.ms, sim.paused ? 0 : sim.scale, now);
   out.arrivals.forEach((a) => {

@@ -7,21 +7,17 @@ import { moonSpinAngle, nodeOffset, primeMeridianRad } from "./frame.js";
 import { buildMaps, sunMap, ringTexture, glowTexture, loadManifest, loadSurface, disposeMaps } from "./textures.js";
 import { TIERS, BASE_TIER, availableTiers, surfaceKey } from "./texmanifest.js";
 import { createSky } from "./sky.js";
+import { VIEWS, OVERVIEW_DIST } from "./views.js";
 
 const ART_BASE = 0.035;
 const MOON_ART_ORBIT = ART_BASE * 5;
-const OVERVIEW_DIST = 85;
-const INNER_DIST = 4.5;
 const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
 const SUN_INTENSITY = 7;
 const UP = new THREE.Vector3(0, 1, 0);
 const TEXTURE_ORDER = ["Earth", "Sun", "Jupiter", "Saturn", "Mars", "Moon", "Venus", "Mercury", "Neptune", "Uranus", "Pluto"];
 
-export const VIEWS = {
-  Overview: { dist: OVERVIEW_DIST },
-  Inner: { dist: INNER_DIST },
-};
+export { VIEWS };
 
 const isView = (id) => Object.hasOwn(VIEWS, id);
 
@@ -403,6 +399,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     b.orbitN = n;
     b.orbitPts = pts;
     b.orbitCol = new Float32Array(n * 4);
+    b.orbit.geometry.dispose();
     b.orbit.geometry.setAttribute("position", new THREE.BufferAttribute(pts, 3));
     b.orbit.geometry.setAttribute("color", new THREE.BufferAttribute(b.orbitCol, 4));
     b.orbit.geometry.computeBoundingSphere();
@@ -549,6 +546,11 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   async function loadTextures() {
     const started = performance.now();
     surfaceManifest = await loadManifest();
+    try {
+      await sky.load();
+    } catch (err) {
+      console.warn("Texture for sky failed", err);
+    }
     const total = TEXTURE_ORDER.length;
     let done = 0;
     for (const id of TEXTURE_ORDER) {
@@ -606,7 +608,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   function update(simMs, timeScale, nowMs) {
     if (state.orbitBuiltMs === null) rebuildOrbits(simMs, true);
     else if (Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs, false);
-    for (let i = 0; i < 2 && rebuildQueue.length; i++) buildOrbit(rebuildQueue.shift(), rebuildMs);
+    if (rebuildQueue.length) buildOrbit(rebuildQueue.shift(), rebuildMs);
 
     const earth = helioPosition("Earth", simMs);
     for (const p of PLANETS) bodies[p.id].pos = helioPosition(p.id, simMs);

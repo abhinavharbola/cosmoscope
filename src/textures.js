@@ -3,7 +3,7 @@ import { parseManifest, resolveFiles, surfaceKey, centerLonOffset, MASK_SLOTS } 
 
 const channel = typeof window !== "undefined" && typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
 
-const tick = () =>
+export const tick = () =>
   channel
     ? new Promise((r) => {
         channel.port1.onmessage = () => r();

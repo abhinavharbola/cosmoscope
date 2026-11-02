@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { galacticBasis } from "./frame.js";
+import { tick } from "./textures.js";
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -34,7 +35,7 @@ function noiseGrid(rand, size) {
   };
 }
 
-export function milkyWayTexture() {
+function milkyWayPainter() {
   const w = 2048;
   const h = 1024;
   const canvas = document.createElement("canvas");
@@ -45,52 +46,79 @@ export function milkyWayTexture() {
   const rand = mulberry(2026);
   const ns = [noiseGrid(rand, 6), noiseGrid(rand, 14), noiseGrid(rand, 32), noiseGrid(rand, 80)];
   const dust = [noiseGrid(rand, 12), noiseGrid(rand, 30), noiseGrid(rand, 75)];
-  for (let y = 0; y < h; y++) {
-    const v = (y + 0.5) / h;
-    const b = (0.5 - v) * Math.PI;
-    for (let x = 0; x < w; x++) {
-      const u = (x + 0.5) / w;
-      const l = (u - 0.5) * Math.PI * 2;
-      const core = Math.exp(-Math.pow(l / 1.1, 2));
-      const width = 0.16 + 0.2 * core;
-      const band = Math.exp(-Math.pow(b / width, 2));
-      let n = 0;
-      let amp = 0.5;
-      let norm = 0;
-      for (let i = 0; i < ns.length; i++) {
-        n += ns[i](u, v) * amp;
-        norm += amp;
-        amp *= 0.55;
+
+  function rows(y0, y1) {
+    for (let y = y0; y < y1; y++) {
+      const v = (y + 0.5) / h;
+      const b = (0.5 - v) * Math.PI;
+      for (let x = 0; x < w; x++) {
+        const u = (x + 0.5) / w;
+        const l = (u - 0.5) * Math.PI * 2;
+        const core = Math.exp(-Math.pow(l / 1.1, 2));
+        const width = 0.16 + 0.2 * core;
+        const band = Math.exp(-Math.pow(b / width, 2));
+        let n = 0;
+        let amp = 0.5;
+        let norm = 0;
+        for (let i = 0; i < ns.length; i++) {
+          n += ns[i](u, v) * amp;
+          norm += amp;
+          amp *= 0.55;
+        }
+        n /= norm;
+        let dn = 0;
+        amp = 0.5;
+        norm = 0;
+        for (let i = 0; i < dust.length; i++) {
+          dn += dust[i](u, v * 0.65) * amp;
+          norm += amp;
+          amp *= 0.55;
+        }
+        dn /= norm;
+        const lane = Math.exp(-Math.pow((b - 0.02) / 0.05, 2)) * Math.max(0, dn - 0.46) * 3.2;
+        let I = band * (0.35 + 0.9 * n) * (0.55 + 0.9 * core);
+        I *= Math.max(0, 1 - lane);
+        I += Math.exp(-Math.pow(b / 0.7, 2)) * 0.015;
+        const warm = Math.min(1, core * 1.2);
+        const r = (0.62 + 0.38 * warm) * I;
+        const g = (0.66 + 0.2 * warm) * I;
+        const bl = (0.85 - 0.3 * warm) * I;
+        const i4 = (y * w + x) * 4;
+        img.data[i4] = Math.min(255, r * 255 * 0.55);
+        img.data[i4 + 1] = Math.min(255, g * 255 * 0.55);
+        img.data[i4 + 2] = Math.min(255, bl * 255 * 0.55);
+        img.data[i4 + 3] = 255;
       }
-      n /= norm;
-      let dn = 0;
-      amp = 0.5;
-      norm = 0;
-      for (let i = 0; i < dust.length; i++) {
-        dn += dust[i](u, v * 0.65) * amp;
-        norm += amp;
-        amp *= 0.55;
-      }
-      dn /= norm;
-      const lane = Math.exp(-Math.pow((b - 0.02) / 0.05, 2)) * Math.max(0, dn - 0.46) * 3.2;
-      let I = band * (0.35 + 0.9 * n) * (0.55 + 0.9 * core);
-      I *= Math.max(0, 1 - lane);
-      I += Math.exp(-Math.pow(b / 0.7, 2)) * 0.015;
-      const warm = Math.min(1, core * 1.2);
-      const r = (0.62 + 0.38 * warm) * I;
-      const g = (0.66 + 0.2 * warm) * I;
-      const bl = (0.85 - 0.3 * warm) * I;
-      const i4 = (y * w + x) * 4;
-      img.data[i4] = Math.min(255, r * 255 * 0.55);
-      img.data[i4 + 1] = Math.min(255, g * 255 * 0.55);
-      img.data[i4 + 2] = Math.min(255, bl * 255 * 0.55);
-      img.data[i4 + 3] = 255;
     }
   }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+
+  function finish() {
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  return { h, rows, finish };
+}
+
+export function milkyWayTexture() {
+  const p = milkyWayPainter();
+  p.rows(0, p.h);
+  return p.finish();
+}
+
+export async function milkyWayTextureAsync(yieldFn, budgetMs = 24) {
+  const p = milkyWayPainter();
+  let t = performance.now();
+  for (let y = 0; y < p.h; y += 4) {
+    p.rows(y, Math.min(p.h, y + 4));
+    if (performance.now() - t > budgetMs) {
+      await yieldFn();
+      t = performance.now();
+    }
+  }
+  return p.finish();
 }
 
 const STAR_COLORS = [
@@ -144,10 +172,8 @@ export function createSky() {
   );
   root.add(tilt);
 
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(3500, 64, 32),
-    new THREE.MeshBasicMaterial({ map: milkyWayTexture(), side: THREE.BackSide, depthWrite: false, fog: false })
-  );
+  const domeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, depthWrite: false, fog: false });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(3500, 64, 32), domeMaterial);
   dome.renderOrder = -20;
   dome.frustumCulled = false;
   tilt.add(dome);
@@ -161,10 +187,22 @@ export function createSky() {
     tilt.add(s);
   });
 
+  let loading = null;
+
   return {
     object: root,
     follow(position) {
       root.position.copy(position);
+    },
+    load() {
+      if (!loading) {
+        loading = milkyWayTextureAsync(tick).then((tex) => {
+          domeMaterial.map = tex;
+          domeMaterial.color.set(0xffffff);
+          domeMaterial.needsUpdate = true;
+        });
+      }
+      return loading;
     },
   };
 }

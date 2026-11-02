@@ -1,6 +1,6 @@
 export function formatDuration(sec) {
   const s = Math.abs(sec);
-  if (s < 1) return `${(s * 1000).toFixed(0)} ms`;
+  if (s < 0.9995) return `${(s * 1000).toFixed(0)} ms`;
   if (s < 59.95) return `${s.toFixed(1)} s`;
   if (s < 3599.5) {
     const t = Math.round(s);
@@ -24,7 +24,7 @@ function plural(value, word) {
 }
 
 export function formatUnit(sec) {
-  if (sec < 60) return `${Math.round(sec)} s`;
+  if (sec < 59.5) return `${Math.round(sec)} s`;
   if (sec < 3600) return `${trim(sec / 60)} min`;
   if (sec < 86400) return `${trim(sec / 3600)} hr`;
   if (sec < 86400 * 7) return plural(trim(sec / 86400), "day");

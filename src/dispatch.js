@@ -22,8 +22,10 @@ function flareClassNote(cls) {
 
 export function createDispatch(els) {
   let seq = 0;
+  let loaded = false;
 
   async function load() {
+    loaded = true;
     const mine = ++seq;
     els.body.innerHTML = `<p class="dim">Contacting NASA</p>`;
     const results = await Promise.allSettled([loadApod(), loadNeo(), loadFlares()]);
@@ -90,6 +92,7 @@ export function createDispatch(els) {
     const open = els.panel.hidden;
     els.panel.hidden = !open;
     els.toggle.setAttribute("aria-expanded", String(open));
+    if (open && !loaded) load();
   });
 
   return { load };

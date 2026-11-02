@@ -62,7 +62,12 @@ export function primeMeridianRad(W0, Wdot, ms) {
 
 export function quatFromUnitVectors(a, b) {
   const d = dot(a, b);
-  if (d < -0.999999) return { x: 1, y: 0, z: 0, w: 0 };
+  if (d < -0.999999) {
+    const helper = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const axis = cross(a, helper);
+    const n = Math.hypot(axis[0], axis[1], axis[2]);
+    return { x: axis[0] / n, y: axis[1] / n, z: axis[2] / n, w: 0 };
+  }
   const c = cross(a, b);
   const q = { x: c[0], y: c[1], z: c[2], w: 1 + d };
   const n = Math.hypot(q.x, q.y, q.z, q.w);
