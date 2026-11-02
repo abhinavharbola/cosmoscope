@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { encodePng } from "../../tools/png.mjs";
-import { assertPinsMatch, installStubs, watch, bootDone } from "./harness.mjs";
+import { installStubs, watch, bootDone } from "./harness.mjs";
 
 const solid = (r, g, b) => {
   const rgba = new Uint8Array(64 * 32 * 4);
@@ -48,10 +48,6 @@ const MANIFEST = {
     },
   },
 };
-
-test.beforeAll(async () => {
-  await assertPinsMatch();
-});
 
 test.describe("real textures", () => {
   test.describe.configure({ mode: "serial" });

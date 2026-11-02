@@ -11,6 +11,14 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const eclipticOf = (v) => ({ lon: ((Math.atan2(-v[2], v[0]) / D) + 360) % 360, lat: Math.asin(v[1]) / D });
 const UP = [0, 1, 0];
 
+test("quatFromUnitVectors turns antiparallel vectors onto each other for any axis", () => {
+  for (const a of [[1, 0, 0], [0, 1, 0], [0, 0, -1], norm([1, 1, 1]), norm([-0.2, 0.97, 0.1])]) {
+    const b = a.map((x) => -x);
+    const out = rotateByQuat(quatFromUnitVectors(a, b), a);
+    for (let i = 0; i < 3; i++) assert.ok(Math.abs(out[i] - b[i]) < 1e-9, `${a} ${out}`);
+  }
+});
+
 test("toThree is a proper rotation", () => {
   const a = toThree({ x: 1, y: 0, z: 0 });
   const b = toThree({ x: 0, y: 1, z: 0 });

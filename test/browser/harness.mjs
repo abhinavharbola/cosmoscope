@@ -1,59 +1,10 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const root = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const modules = path.join(root, "node_modules");
-
-const JS = { "content-type": "text/javascript; charset=utf-8", "access-control-allow-origin": "*" };
-
 const NASA = {
   apod: { title: "Fixture picture", url: "https://example.invalid/x", media_type: "other", date: "2026-11-01" },
   neo: { near_earth_objects: {} },
   flares: [],
 };
 
-export async function pinnedVersions() {
-  const html = await readFile(path.join(root, "index.html"), "utf8");
-  const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]).imports;
-  const three = map.three.match(/three@([^/]+)\//)[1];
-  const astro = map["astronomy-engine"].match(/astronomy-engine@([^/]+)\//)[1];
-  return { three, astro };
-}
-
-async function installed(name) {
-  const pkg = JSON.parse(await readFile(path.join(modules, name, "package.json"), "utf8"));
-  return pkg.version;
-}
-
-export async function assertPinsMatch() {
-  const pins = await pinnedVersions();
-  const have = { three: await installed("three"), astro: await installed("astronomy-engine") };
-  if (pins.three !== have.three || pins.astro !== have.astro) {
-    throw new Error(
-      `index.html pins three ${pins.three} and astronomy-engine ${pins.astro}, but node_modules has ${have.three} and ${have.astro}. Update the devDependencies to match.`
-    );
-  }
-}
-
-async function serveFrom(route, base, rel) {
-  const file = path.normalize(path.join(base, rel));
-  if (!file.startsWith(base + path.sep)) return route.fulfill({ status: 404, body: "not found" });
-  try {
-    return route.fulfill({ status: 200, headers: JS, body: await readFile(file) });
-  } catch {
-    return route.fulfill({ status: 404, body: "not found" });
-  }
-}
-
 export async function installStubs(page) {
-  await page.route("https://cdn.jsdelivr.net/npm/three@*/**", (route) => {
-    const rel = new URL(route.request().url()).pathname.replace(/^\/npm\/three@[^/]+\//, "");
-    return serveFrom(route, path.join(modules, "three"), rel);
-  });
-  await page.route("https://cdn.jsdelivr.net/npm/astronomy-engine@*/+esm", (route) =>
-    serveFrom(route, path.join(modules, "astronomy-engine"), "esm/astronomy.js")
-  );
   await page.route("https://fonts.googleapis.com/**", (route) =>
     route.fulfill({ status: 200, headers: { "content-type": "text/css" }, body: "" })
   );

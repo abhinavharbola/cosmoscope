@@ -54,6 +54,21 @@ test("proxy validates dates, answers preflight and never caches errors", async (
   assert.equal(limited.headers.get("cache-control"), "no-store");
 });
 
+test("proxy answers 429 when the rate limiter refuses and skips the upstream call", async () => {
+  const fake = fakeFetch();
+  const limited = { limit: async () => ({ success: false }) };
+  const res = await handle(new Request("https://p.example/planetary/apod", { headers: HEAD }), { ...ENV, RATE_LIMITER: limited }, fake);
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get("access-control-allow-origin"), "https://site.example");
+  assert.equal(fake.calls.length, 0);
+  const open = { limit: async () => ({ success: true }) };
+  const ok = await handle(new Request("https://p.example/planetary/apod", { headers: HEAD }), { ...ENV, RATE_LIMITER: open }, fake);
+  assert.equal(ok.status, 200);
+  const broken = { limit: async () => { throw new Error("down"); } };
+  const still = await handle(new Request("https://p.example/planetary/apod", { headers: HEAD }), { ...ENV, RATE_LIMITER: broken }, fake);
+  assert.equal(still.status, 200);
+});
+
 test("proxy reports upstream failure with cors headers", async () => {
   const boom = async () => {
     throw new Error("down");

@@ -71,6 +71,13 @@ test("the last selectable date stays inside the range instead of wrapping to 180
   assert.ok(Number.isNaN(parseInputDate("", "utc")));
 });
 
+test("rounding never prints a unit boundary value", () => {
+  assert.equal(formatDuration(0.9996), "1.0 s");
+  assert.equal(formatDuration(0.5), "500 ms");
+  assert.equal(formatUnit(59.6), "1 min");
+  assert.equal(formatUnit(59), "59 s");
+});
+
 test("unit and duration edge cases", () => {
   assert.equal(formatUnit(86400 * 364), "1 year");
   assert.equal(formatUnit(86400 * 90), "3 months");

@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { assertPinsMatch, installStubs, watch, bootDone, centerStats } from "./harness.mjs";
+import { installStubs, watch, bootDone, centerStats } from "./harness.mjs";
 
 const BODIES = ["Sun", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Moon"];
 const SHOTS = "test-results/screens";
 const FIXED_TIME = "t=2026-11-01T12:00:00Z&s=1";
 
 test.beforeAll(async () => {
-  await assertPinsMatch();
   await mkdir(SHOTS, { recursive: true });
 });
 

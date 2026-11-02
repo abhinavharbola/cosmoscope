@@ -54,7 +54,11 @@ test("orbit trails are continuous at both ends of the supported range", { skip }
       let worst = 0;
       let r = 0;
       for (let i = 0; i < n; i++) r = Math.max(r, Math.hypot(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]));
-      for (let i = 1; i < n; i++) worst = Math.max(worst, Math.hypot(p[i * 3] - p[i * 3 - 3], p[i * 3 + 1] - p[i * 3 - 2], p[i * 3 + 2] - p[i * 3 - 1]));
+      for (let i = 1; i <= n; i++) {
+        const a = (i % n) * 3;
+        const b = (i - 1) * 3;
+        worst = Math.max(worst, Math.hypot(p[a] - p[b], p[a + 1] - p[b + 1], p[a + 2] - p[b + 2]));
+      }
       assert.ok(worst < 0.05 * r, `${id} ${worst} ${r}`);
     }
   }
@@ -68,6 +72,6 @@ test("almanac next quarter is correct when time runs backwards inside one bucket
   const before = almanac(q - 28 * min);
   assert.equal(before.nextQuarter.name, "Last quarter");
   assert.ok(Math.abs(before.nextQuarter.ms - q) < 4 * min);
-  const forward = almanac(q - 28 * min);
-  assert.equal(forward.nextQuarter.name, "Last quarter");
+  const later = almanac(q + 3 * 86400000);
+  assert.equal(later.nextQuarter.name, "New Moon");
 });
