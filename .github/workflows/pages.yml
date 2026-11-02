@@ -6,19 +6,20 @@ permissions:
   contents: read
   pages: write
   id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
 jobs:
+  smoke:
+    uses: ./.github/workflows/smoke.yml
   deploy:
+    needs: smoke
     runs-on: ubuntu-latest
     environment:
       name: github-pages
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npm test
-      - run: mkdir _site && cp -r index.html src textures _site/
+      - run: mkdir _site && cp -r index.html src textures vendor _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

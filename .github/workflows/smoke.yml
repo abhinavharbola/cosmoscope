@@ -1,7 +1,9 @@
 name: Browser smoke tests
 on:
   push:
+    branches-ignore: [main]
   pull_request:
+  workflow_call:
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -14,6 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:ui
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
         env:

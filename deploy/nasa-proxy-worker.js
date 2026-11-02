@@ -36,6 +36,18 @@ export async function handle(request, env, fetchImpl = fetch) {
   const allowed = ROUTES[url.pathname];
   if (request.method !== "GET" || !allowed) return respond("Not found", 404, cors);
 
+  const limiter = env.RATE_LIMITER;
+  if (limiter && typeof limiter.limit === "function") {
+    let allowedNow = true;
+    try {
+      const verdict = await limiter.limit({ key: request.headers.get("cf-connecting-ip") || origin });
+      allowedNow = verdict.success !== false;
+    } catch {
+      allowedNow = true;
+    }
+    if (!allowedNow) return respond("Too many requests", 429, { ...cors, "retry-after": "60" });
+  }
+
   const target = new URL(`https://api.nasa.gov${url.pathname}`);
   for (const [k, v] of url.searchParams) {
     if (!allowed.includes(k)) continue;
