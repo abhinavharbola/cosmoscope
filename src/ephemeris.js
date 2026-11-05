@@ -1,8 +1,13 @@
 import * as Astronomy from "astronomy-engine";
 import { toThree, poleVector } from "./frame.js";
 import { MIN_MS, MAX_MS, clampMs } from "./timeutil.js";
+import { MOONS, AU_KM, POLES } from "./data.js";
 
 export { MIN_MS, MAX_MS, clampMs, poleVector };
+
+const MOON_BY_ID = Object.fromEntries(MOONS.map((m) => [m.id, m]));
+const J2000_MS = Date.UTC(2000, 0, 1, 12);
+const D = Math.PI / 180;
 
 const FALLBACK_PERIOD = {
   Mercury: 87.969,
@@ -21,8 +26,51 @@ export function helioPosition(bodyId, ms) {
   return toThree(Astronomy.HelioVector(Astronomy.Body[bodyId], new Date(ms)));
 }
 
-export function moonOffset(ms) {
-  return toThree(Astronomy.GeoMoon(new Date(ms)));
+let jupiterCache = { ms: null, info: null };
+function jupiterMoonsInfo(ms) {
+  if (jupiterCache.ms !== ms) {
+    jupiterCache.ms = ms;
+    jupiterCache.info = Astronomy.JupiterMoons(new Date(ms));
+  }
+  return jupiterCache.info;
+}
+
+function keplerianOffset(moon, ms) {
+  const pole = poleVector(...POLES[moon.parent]);
+  // reference x-axis: intersection of parent-equator with J2000-equator
+  let rx = -pole[2];
+  let ry = 0;
+  let rz = pole[0];
+  const rlen = Math.hypot(rx, ry, rz);
+  if (rlen < 0.01) {
+    rx = 1;
+    ry = 0;
+    rz = 0;
+  } else {
+    rx /= rlen;
+    ry /= rlen;
+    rz /= rlen;
+  }
+  const yx = pole[1] * rz - pole[2] * ry;
+  const yy = pole[2] * rx - pole[0] * rz;
+  const yz = pole[0] * ry - pole[1] * rx;
+
+  const days = (ms - J2000_MS) / 86400000;
+  const a = moon.semiMajorAU;
+  const M = moon.phaseDeg * D + (2 * Math.PI * days) / moon.periodDays;
+  const c = Math.cos(M);
+  const s = Math.sin(M);
+  return [a * (c * rx + s * yx), a * (c * ry + s * yy), a * (c * rz + s * yz)];
+}
+
+// True AU offset from the parent, in the scene frame.
+// JupiterMoons vectors are J2000-equatorial, relative to Jupiter's centre.
+export function moonOffset(id, ms) {
+  const moon = MOON_BY_ID[id];
+  if (!moon) return [0, 0, 0];
+  if (moon.source === "ephemeris") return toThree(Astronomy.GeoMoon(new Date(ms)));
+  if (moon.source === "jupiter-moons") return toThree(jupiterMoonsInfo(ms)[moon.jupiterKey]);
+  return keplerianOffset(moon, ms);
 }
 
 export function gmstRad(ms) {

@@ -201,6 +201,7 @@ function craters(canvas, rand, count, strength, maxR) {
 }
 
 async function earthMaps() {
+  // ...unchanged from the original repo...
   const SEA = 0.56;
   const rand = mulberry(hashSeed("Earth"));
   const land = layers(rand, [4, 8, 16, 32, 64, 128, 256]);
@@ -266,6 +267,7 @@ async function earthMaps() {
 }
 
 async function jupiterMap(body) {
+  // ...unchanged from the original repo...
   const rand = mulberry(hashSeed(body.id));
   const turb = layers(rand, [4, 8, 16, 32]);
   const fine = layers(rand, [16, 48, 96, 192]);
@@ -284,7 +286,7 @@ async function jupiterMap(body) {
     if (d < 1.9) {
       const k = d < 1 ? Math.pow(1 - d, 0.45) : 0;
       col = mix(col, spot, k * 0.85);
-      if (d >= 1) col = mix(col, [236, 220, 200], (1.9 - d) / 0.9 * 0.25);
+      if (d >= 1) col = mix(col, [236, 220, 200], ((1.9 - d) / 0.9) * 0.25);
     }
     put(outs[0], col);
   });
@@ -292,6 +294,7 @@ async function jupiterMap(body) {
 }
 
 async function saturnMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const turb = layers(rand, [4, 8, 16]);
   const fine = layers(rand, [16, 48, 96]);
@@ -309,6 +312,7 @@ async function saturnMap(body) {
 }
 
 async function venusMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const st = layers(rand, [3, 6, 12, 24]);
   const sw = layers(rand, [8, 24, 64]);
@@ -323,6 +327,7 @@ async function venusMap(body) {
 }
 
 async function iceGiantMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const st = layers(rand, [4, 8, 16]);
   const sw = layers(rand, [16, 48, 96]);
@@ -347,6 +352,7 @@ async function iceGiantMap(body) {
 }
 
 async function marsMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const alb = layers(rand, [3, 6, 12]);
@@ -369,6 +375,7 @@ async function marsMap(body) {
 }
 
 async function moonMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const mare = layers(rand, [3, 5, 9]);
@@ -386,6 +393,7 @@ async function moonMap(body) {
 }
 
 async function mercuryMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const pal = body.palette.map(hexToRgb);
@@ -398,6 +406,7 @@ async function mercuryMap(body) {
 }
 
 async function plutoMap(body) {
+  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64]);
   const pal = body.palette.map(hexToRgb);
@@ -413,6 +422,20 @@ async function plutoMap(body) {
     put(outs[0], col);
   });
   craters(c, rand, 60, 0.5, 24);
+  return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
+}
+
+// NEW: generic cratered moon surface for Phobos, Deimos, Io, Europa,
+// Ganymede, Callisto, Titan, Triton. Not a photograph.
+async function genericMoonMap(body) {
+  const rand = mulberry(hashSeed(body.id));
+  const ns = layers(rand, [4, 8, 16, 32, 64]);
+  const pal = body.palette.map(hexToRgb);
+  const [c] = await paintMulti(1024, 512, 1, (u, v, x, y, outs) => {
+    const n = fbm(ns, u, v);
+    put(outs[0], samplePalette(pal, clamp(n * 1.2 - 0.1)));
+  });
+  craters(c, rand, 400, 0.6, 24);
   return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
 
@@ -432,6 +455,8 @@ export async function buildMaps(body) {
       return marsMap(body);
     case "moon":
       return moonMap(body);
+    case "moon-generic":
+      return genericMoonMap(body);
     case "pluto":
       return plutoMap(body);
     default:
