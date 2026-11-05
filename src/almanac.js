@@ -2,6 +2,7 @@ import * as Astronomy from "astronomy-engine";
 import { helioPosition, distanceAU } from "./ephemeris.js";
 import { C_AU_S } from "./data.js";
 import { shortDate } from "./format.js";
+import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
 
 const QUARTERS = ["New Moon", "First quarter", "Full Moon", "Last quarter"];
 const SEASONS = [
@@ -54,6 +55,11 @@ function pack(e) {
   return e ? { name: e.name, date: shortDate(e.ms), ms: e.ms } : null;
 }
 
+function packEclipse(e) {
+  if (!e) return null;
+  return { kind: e.kind, date: shortDate(e.ms), ms: e.ms };
+}
+
 export function almanac(ms) {
   const date = new Date(ms);
   const out = {};
@@ -87,5 +93,7 @@ export function almanac(ms) {
   }
   out.nextQuarter = pack(firstAfter(cache.quarters, ms));
   out.nextSeason = pack(firstAfter(cache.seasons, ms));
+  out.nextSolar = packEclipse(nextSolarEclipse(ms));
+  out.nextLunar = packEclipse(nextLunarEclipse(ms));
   return out;
 }

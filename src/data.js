@@ -531,4 +531,6 @@ export const MOMENTS = [
   { label: "Venus transit, greatest", iso: "2012-06-06T01:29:36Z", focus: "Venus", scale: 3600 },
   { label: "New Horizons at Pluto", iso: "2015-07-14T11:49:00Z", focus: "Pluto", scale: 86400 },
   { label: "Jupiter and Saturn conjunct", iso: "2020-12-21T18:20:00Z", focus: "Jupiter", scale: 86400 },
+  { label: "Total solar eclipse, USA", iso: "2024-04-08T18:17:16Z", focus: "Earth", scale: 30, eclipse: true },
+  { label: "Total solar eclipse, Luxor", iso: "2027-08-02T10:06:41Z", focus: "Earth", scale: 30, eclipse: true },
 ];
