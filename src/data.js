@@ -492,6 +492,7 @@ export const MOONS = [
     tempLabel: "-235 C",
     tiltDeg: 0,
     densityKgM3: 2061,
+    spinSign: -1,
     facts: "Orbits Neptune backwards, a likely captured Kuiper Belt object. It has nitrogen geysers.",
     palette: ["#e8c8d0", "#c8a8b0", "#f8e8e8", "#a08088"],
     kind: "moon-generic",

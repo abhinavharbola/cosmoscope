@@ -144,7 +144,6 @@
    "gravity": 1.6,
    "escapeKmS": 2.4,
    "tiltDeg": 6.7,
-   "semiMajorMKm": 0.384,
    "inclinationDeg": 5.1,
    "eccentricity": 0.055
   },
