@@ -2,7 +2,15 @@ import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { installStubs, watch, bootDone, centerStats } from "./harness.mjs";
 
-const BODIES = ["Sun", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Moon"];
+const BODIES = [
+  "Sun", "Mercury", "Venus", "Earth", "Moon",
+  "Mars", "Phobos", "Deimos",
+  "Jupiter", "Io", "Europa", "Ganymede", "Callisto",
+  "Saturn", "Titan",
+  "Uranus",
+  "Neptune", "Triton",
+  "Pluto",
+];
 const SHOTS = "test-results/screens";
 const FIXED_TIME = "t=2026-11-01T12:00:00Z&s=1";
 

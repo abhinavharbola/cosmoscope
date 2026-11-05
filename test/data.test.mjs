@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { SUN, PLANETS, MOON, POLES, MOMENTS } from "../src/data.js";
+import { SUN, PLANETS, MOONS, POLES, MOMENTS } from "../src/data.js";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/nssdc.json", import.meta.url)));
-const all = [SUN, ...PLANETS, MOON];
+const all = [SUN, ...PLANETS, ...MOONS];
 
 test("body values match the pinned NSSDC fixture", () => {
   for (const b of all) {
@@ -74,4 +74,9 @@ test("prime meridian rates agree with rotation periods and spin signs", () => {
     assert.ok(within(hours, Math.abs(b.rotationHours), 0.015), `${b.id} ${hours} vs ${b.rotationHours}`);
     assert.equal(b.Wdot > 0, (b.spinSign ?? 1) > 0, b.id);
   }
+});
+
+test("every moon parent is a known planet", () => {
+  const planetIds = new Set(PLANETS.map((p) => p.id));
+  for (const m of MOONS) assert.ok(planetIds.has(m.parent), `${m.id} parent ${m.parent}`);
 });

@@ -2,13 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseHash, buildHash } from "../src/hash.js";
 import { VIEWS } from "../src/views.js";
-import { ORDER } from "../src/data.js";
+import { ORDER, MOONS } from "../src/data.js";
 
-const ids = new Set([...ORDER, "Moon"]);
+const ids = new Set([...ORDER, ...MOONS.map((m) => m.id)]);
 const valid = (f) => Object.hasOwn(VIEWS, f) || ids.has(f);
 
 test("hash accepts known focus ids and rejects inherited property names", () => {
   assert.equal(parseHash("#f=Mars", valid).focus, "Mars");
+  assert.equal(parseHash("#f=Io", valid).focus, "Io");
+  assert.equal(parseHash("#f=Triton", valid).focus, "Triton");
   for (const bad of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
     assert.equal(parseHash(`#f=${bad}`, valid).focus, null, bad);
   }

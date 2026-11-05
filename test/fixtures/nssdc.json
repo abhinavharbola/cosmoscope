@@ -147,59 +147,95 @@
    "semiMajorMKm": 0.384,
    "inclinationDeg": 5.1,
    "eccentricity": 0.055
+  },
+  "Io": {
+   "radiusKm": 1821.6,
+   "rotationHours": 42.46,
+   "massE24": 0.08932,
+   "densityKgM3": 3528,
+   "gravity": 1.796,
+   "escapeKmS": 2.558,
+   "tiltDeg": 0
+  },
+  "Europa": {
+   "radiusKm": 1560.8,
+   "rotationHours": 85.23,
+   "massE24": 0.048,
+   "densityKgM3": 3013,
+   "gravity": 1.314,
+   "escapeKmS": 2.025,
+   "tiltDeg": 0
+  },
+  "Ganymede": {
+   "radiusKm": 2634.1,
+   "rotationHours": 171.71,
+   "massE24": 0.148,
+   "densityKgM3": 1936,
+   "gravity": 1.428,
+   "escapeKmS": 2.741,
+   "tiltDeg": 0
+  },
+  "Callisto": {
+   "radiusKm": 2410.3,
+   "rotationHours": 400.54,
+   "massE24": 0.108,
+   "densityKgM3": 1834,
+   "gravity": 1.235,
+   "escapeKmS": 2.44,
+   "tiltDeg": 0
+  },
+  "Titan": {
+   "radiusKm": 2574.7,
+   "rotationHours": 382.68,
+   "massE24": 0.1345,
+   "densityKgM3": 1881,
+   "gravity": 1.352,
+   "escapeKmS": 2.639,
+   "tiltDeg": 0
+  },
+  "Triton": {
+   "radiusKm": 1353.4,
+   "rotationHours": -141.04,
+   "massE24": 0.021,
+   "densityKgM3": 2061,
+   "gravity": 0.779,
+   "escapeKmS": 1.455,
+   "tiltDeg": 0
+  },
+  "Phobos": {
+   "radiusKm": 11.08,
+   "rotationHours": 7.653,
+   "massE24": 1.06e-8,
+   "densityKgM3": 1876,
+   "gravity": 0.0057,
+   "escapeKmS": 0.0113,
+   "tiltDeg": 0
+  },
+  "Deimos": {
+   "radiusKm": 6.2,
+   "rotationHours": 30.31,
+   "massE24": 1.4762e-9,
+   "densityKgM3": 1479,
+   "gravity": 0.003,
+   "escapeKmS": 0.0056,
+   "tiltDeg": 0
   }
  },
  "poles": {
-  "Sun": [
-   286.13,
-   63.87
-  ],
-  "Mercury": [
-   281.01,
-   61.414
-  ],
-  "Venus": [
-   272.76,
-   67.16
-  ],
-  "Mars": [
-   317.681,
-   52.887
-  ],
-  "Jupiter": [
-   268.057,
-   64.495
-  ],
-  "Saturn": [
-   40.589,
-   83.537
-  ],
-  "Uranus": [
-   257.311,
-   -15.175
-  ],
-  "Neptune": [
-   299.36,
-   43.46
-  ],
-  "Pluto": [
-   132.99,
-   -6.16
-  ]
+  "Sun": [286.13, 63.87],
+  "Mercury": [281.01, 61.414],
+  "Venus": [272.76, 67.16],
+  "Mars": [317.681, 52.887],
+  "Jupiter": [268.057, 64.495],
+  "Saturn": [40.589, 83.537],
+  "Uranus": [257.311, -15.175],
+  "Neptune": [299.36, 43.46],
+  "Pluto": [132.99, -6.16]
  },
  "saturnRingsKm": {
-  "C": [
-   74658,
-   91975
-  ],
-  "B": [
-   91975,
-   117507
-  ],
-  "A": [
-   122340,
-   136780
-  ],
+  "C": [74658, 91975],
+  "B": [91975, 117507],
+  "A": [122340, 136780],
   "enckeGapInner": 133410
  },
  "positiveRotationRate": {
@@ -213,6 +249,14 @@
   "Saturn": true,
   "Uranus": false,
   "Neptune": true,
-  "Pluto": true
+  "Pluto": true,
+  "Io": true,
+  "Europa": true,
+  "Ganymede": true,
+  "Callisto": true,
+  "Titan": true,
+  "Triton": false,
+  "Phobos": true,
+  "Deimos": true
  }
 }
