@@ -1,4 +1,4 @@
-import { PLANETS, SUN, MOON, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
+import { PLANETS, SUN, MOONS, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
 import { clampMs, distanceAU, separationAU, moonOffset } from "./ephemeris.js";
 import { inputDate, parseInputDate } from "./dates.js";
 import { parseHash, buildHash, SCALE_MIN, SCALE_MAX } from "./hash.js";
@@ -29,7 +29,11 @@ const PRESETS = [
 
 const SLIDER_MAX = 1000;
 
-const ALL = { Sun: SUN, Moon: MOON, ...Object.fromEntries(PLANETS.map((p) => [p.id, p])) };
+const ALL = {
+  Sun: SUN,
+  ...Object.fromEntries(PLANETS.map((p) => [p.id, p])),
+  ...Object.fromEntries(MOONS.map((m) => [m.id, m])),
+};
 
 const has = (o, k) => Object.hasOwn(o, k);
 
@@ -372,9 +376,15 @@ const listEl = document.createElement("div");
 listEl.className = "index-list";
 $("index").appendChild(listEl);
 
-[...ORDER, "Moon"].forEach((id) => {
+const INDEX_IDS = [];
+for (const id of ORDER) {
+  INDEX_IDS.push(id);
+  for (const m of MOONS) if (m.parent === id) INDEX_IDS.push(m.id);
+}
+
+INDEX_IDS.forEach((id) => {
   const b = document.createElement("button");
-  b.className = "body-row";
+  b.className = has(ALL, id) && ALL[id].parent ? "body-row moon" : "body-row";
   b.innerHTML = `<span>${id}</span><span class="au"></span>`;
   b.addEventListener("click", () => focusOn(id));
   listEl.appendChild(b);
@@ -426,7 +436,11 @@ function renderPlate(id) {
   rows.push(row("Density", `${fmtNum(d.densityKgM3)} kg/m<sup>3</sup>`, { extra: true }));
   if (d.escapeKmS) rows.push(row("Escape velocity", `${d.escapeKmS} km/s`, { extra: true }));
   rows.push(row("Axial tilt", `${d.tiltDeg} deg`, { extra: true }));
-  if (d.semiMajorMKm) rows.push(row("Orbit radius", `${fmtNum(d.semiMajorMKm)} million km`, { extra: true }));
+  if (d.semiMajorMKm !== null && d.semiMajorMKm !== undefined) {
+    rows.push(row("Orbit radius", `${fmtNum(d.semiMajorMKm)} million km`, { extra: true }));
+  } else if (d.semiMajorKm !== undefined) {
+    rows.push(row("Orbit radius", `${fmtNum(d.semiMajorKm)} km`, { extra: true }));
+  }
   if (d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
   if (d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
   if (d.ringSystem !== null && d.ringSystem !== undefined) rows.push(row("Ring system", d.ringSystem ? "Yes" : "No", { extra: true }));
@@ -480,25 +494,33 @@ function updateLive() {
   const id = world.state.focus;
   const d = has(ALL, id) ? ALL[id] : null;
   if (!d) return;
+  if (id === "Sun") return;
   const bodies = world.bodies;
   const sunEl = $("live-sun");
   const earthEl = $("live-earth");
-  let lightText = "";
-  if (id === "Moon") {
-    const m = moonOffset(sim.ms);
-    const km = Math.hypot(m[0], m[1], m[2]) * AU_KM;
-    if (earthEl) setText(earthEl, `${fmtNum(km, 6)} km`);
-    if (sunEl) setText(sunEl, `${formatAU(distanceAU(bodies.Earth.pos))} AU`);
-    lightText = `Light from Earth takes ${formatDuration(km / 299792.458)} to arrive.`;
-  } else if (id !== "Sun") {
-    const sunAU = distanceAU(bodies[id].pos);
-    if (sunEl) setText(sunEl, `${formatAU(sunAU)} AU`);
-    lightText = `Sunlight takes ${formatDuration(sunAU / C_AU_S)} to arrive.`;
-    if (id !== "Earth") {
-      const eAU = separationAU(bodies[id].pos, bodies.Earth.pos);
-      if (earthEl) setText(earthEl, `${formatAU(eAU)} AU`);
-      lightText += ` From Earth: ${formatDuration(eAU / C_AU_S)}.`;
+  const centerId = d.parent || id;
+  const centerBody = bodies[centerId];
+  if (!centerBody) return;
+  const sunAU = distanceAU(centerBody.pos);
+  if (sunEl) setText(sunEl, `${formatAU(sunAU)} AU`);
+  let lightText = `Sunlight takes ${formatDuration(sunAU / C_AU_S)} to arrive.`;
+
+  if (id !== "Earth") {
+    let eAU;
+    if (d.parent) {
+      const off = moonOffset(id, sim.ms);
+      eAU = separationAU(
+        [centerBody.pos[0] + off[0], centerBody.pos[1] + off[1], centerBody.pos[2] + off[2]],
+        bodies.Earth.pos
+      );
+    } else {
+      eAU = separationAU(centerBody.pos, bodies.Earth.pos);
     }
+    if (earthEl) {
+      if (d.parent === "Earth") setText(earthEl, `${fmtNum(eAU * AU_KM, 6)} km`);
+      else setText(earthEl, `${formatAU(eAU)} AU`);
+    }
+    lightText += ` From Earth: ${formatDuration(eAU / C_AU_S)}.`;
   }
   setText($("plate-light"), lightText);
 }
@@ -560,6 +582,10 @@ function renderDock() {
 
 function renderIndex() {
   for (const p of PLANETS) setText(navAU[p.id], `${formatAU(distanceAU(world.bodies[p.id].pos))} AU`);
+  for (const m of MOONS) {
+    const parent = world.bodies[m.parent];
+    if (parent) setText(navAU[m.id], `${formatAU(distanceAU(parent.pos))} AU`);
+  }
 }
 
 window.addEventListener("keydown", (e) => {

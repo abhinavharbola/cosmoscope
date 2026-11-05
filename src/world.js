@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { SUN, PLANETS, MOON, AU_KM, C_AU_S, POLES } from "./data.js";
+import { SUN, PLANETS, MOONS, AU_KM, C_AU_S, POLES } from "./data.js";
 import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
 import { orbitWindowStart } from "./timeutil.js";
 import { moonSpinAngle, nodeOffset, primeMeridianRad } from "./frame.js";
@@ -10,12 +10,30 @@ import { createSky } from "./sky.js";
 import { VIEWS, OVERVIEW_DIST } from "./views.js";
 
 const ART_BASE = 0.035;
-const MOON_ART_ORBIT = ART_BASE * 5;
+const MOON_BASE_FACTOR = 1.5;
+const MOON_RING_CLEARANCE = 1.15;
+const MOON_OUTER_FACTOR = 5;
 const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
 const SUN_INTENSITY = 7;
 const UP = new THREE.Vector3(0, 1, 0);
-const TEXTURE_ORDER = ["Earth", "Sun", "Jupiter", "Saturn", "Mars", "Moon", "Venus", "Mercury", "Neptune", "Uranus", "Pluto"];
+const TEXTURE_ORDER = [
+  "Earth", "Sun", "Jupiter", "Saturn", "Mars", "Venus", "Mercury",
+  "Neptune", "Uranus", "Pluto",
+  "Moon", "Phobos", "Deimos",
+  "Io", "Europa", "Ganymede", "Callisto",
+  "Titan", "Triton",
+];
+
+// Per-parent moon-system bookkeeping: each planet's moons sit on a
+// display ring between moonBaseR and moonOuterR, sorted by semiMajorAU.
+const MOON_SYSTEMS = {};
+for (const m of MOONS) {
+  const s = (MOON_SYSTEMS[m.parent] ||= { moons: [], aMin: Infinity, aMax: -Infinity });
+  s.moons.push(m);
+  s.aMin = Math.min(s.aMin, m.semiMajorAU);
+  s.aMax = Math.max(s.aMax, m.semiMajorAU);
+}
 
 export { VIEWS };
 
@@ -23,7 +41,6 @@ const isView = (id) => Object.hasOwn(VIEWS, id);
 
 function artisticRadius(body) {
   if (body.id === "Sun") return 0.1;
-  if (body.id === "Moon") return ART_BASE * 0.3;
   return ART_BASE * Math.pow(body.radiusKm / 6371, 0.45);
 }
 
@@ -305,7 +322,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     labelsEl.appendChild(label);
 
     let orbit = null;
-    if (!isSun && data.id !== "Moon") {
+    if (!isSun && !data.parent) {
       orbit = new THREE.LineLoop(
         new THREE.BufferGeometry(),
         new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
@@ -316,6 +333,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
     const body = {
       data,
+      parent: data.parent || null,
       group,
       tilt,
       mesh,
@@ -343,6 +361,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       sy: 0,
       sr: 0,
       shown: false,
+      _trueOffset: [0, 0, 0],
     };
     bodies[data.id] = body;
     return body;
@@ -360,19 +379,23 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
   buildBody(SUN, true);
   PLANETS.forEach((p) => buildBody(p));
-  buildBody(MOON);
+  MOONS.forEach((m) => buildBody(m));
 
-  const moonOrbit = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(
-      Array.from({ length: 128 }, (_, i) => {
-        const a = (i / 128) * Math.PI * 2;
-        return new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-      })
-    ),
-    new THREE.LineBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.4, depthWrite: false })
-  );
-  moonOrbit.frustumCulled = false;
-  scene.add(moonOrbit);
+  const moonRings = {};
+  for (const m of MOONS) {
+    const ring = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(
+        Array.from({ length: 128 }, (_, i) => {
+          const a = (i / 128) * Math.PI * 2;
+          return new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+        })
+      ),
+      new THREE.LineBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.4, depthWrite: false })
+    );
+    ring.frustumCulled = false;
+    scene.add(ring);
+    moonRings[m.id] = ring;
+  }
 
   const pulse = {
     emitMs: null,
@@ -555,6 +578,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     let done = 0;
     for (const id of TEXTURE_ORDER) {
       const b = bodies[id];
+      if (!b) continue;
       try {
         let maps = null;
         let bumpScale;
@@ -614,14 +638,39 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     for (const p of PLANETS) bodies[p.id].pos = helioPosition(p.id, simMs);
     bodies.Sun.pos = [0, 0, 0];
 
-    const moonVec = moonOffset(simMs);
-    const moonLen = Math.hypot(moonVec[0], moonVec[1], moonVec[2]);
-    const earthDisp = displayRadius(bodies.Earth.data);
-    const moonDistDisp = state.trueScale ? moonLen : Math.max(MOON_ART_ORBIT, earthDisp * 4);
-    const k = moonDistDisp / moonLen;
-    bodies.Moon.pos = [earth[0] + moonVec[0] * k, earth[1] + moonVec[1] * k, earth[2] + moonVec[2] * k];
-
     for (const id of Object.keys(bodies)) bodies[id].radius = displayRadius(bodies[id].data);
+
+    // Moons: display distance is per-parent, between moonBaseR and moonOuterR.
+    for (const moon of MOONS) {
+      const b = bodies[moon.id];
+      const parent = bodies[moon.parent];
+      const trueOffset = moonOffset(moon.id, simMs);
+      const trueLen = Math.hypot(trueOffset[0], trueOffset[1], trueOffset[2]);
+
+      let dispDist;
+      if (state.trueScale) {
+        dispDist = trueLen;
+      } else {
+        const sys = MOON_SYSTEMS[moon.parent];
+        const parentDisp = parent.radius;
+        const ringOuter = parent.data.rings
+          ? parentDisp * (parent.data.rings.outerKm / parent.data.radiusKm)
+          : 0;
+        const moonBaseR = Math.max(parentDisp * MOON_BASE_FACTOR, ringOuter * MOON_RING_CLEARANCE);
+        const moonOuterR = Math.max(parentDisp * MOON_OUTER_FACTOR, moonBaseR * 1.5);
+        const t = sys.moons.length === 1
+          ? 1
+          : (moon.semiMajorAU - sys.aMin) / (sys.aMax - sys.aMin);
+        dispDist = moonBaseR + t * (moonOuterR - moonBaseR);
+      }
+      const k = trueLen > 1e-12 ? dispDist / trueLen : 0;
+      b.pos = [
+        parent.pos[0] + trueOffset[0] * k,
+        parent.pos[1] + trueOffset[1] * k,
+        parent.pos[2] + trueOffset[2] * k,
+      ];
+      b._trueOffset = trueOffset;
+    }
 
     const targetPos = isView(state.focus) ? [0, 0, 0] : bodies[state.focus].pos;
 
@@ -663,13 +712,13 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const periodSec = Math.abs(b.data.rotationHours) * 3600;
       const perFrame = (Math.abs(timeScale) * 2 * Math.PI) / periodSec / 60;
       const spinSign = b.data.spinSign ?? 1;
-      if (id === "Moon") {
-        b.mesh.rotation.y = moonSpinAngle(moonVec, b.tilt.quaternion);
+      if (b.data.parent) {
+        b.mesh.rotation.y = moonSpinAngle(b._trueOffset, b.tilt.quaternion);
       } else if (perFrame >= 0.5) {
         b.mesh.rotation.y = (nowMs / 1000) * 0.3 * spinSign;
       } else if (id === "Earth") {
         b.mesh.rotation.y = gmst;
-      } else {
+      } else if (b.data.W0 !== undefined) {
         b.mesh.rotation.y = primeMeridianRad(b.data.W0, b.data.Wdot, simMs) + b.phi;
       }
       if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y + (nowMs / 1000) * 0.0008;
@@ -703,9 +752,9 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       b.cd = camToBody;
       b.crowded = false;
       let show = state.showLabels && onScreen;
-      if (id === "Moon" && state.focus !== "Moon") {
-        const e = bodies.Earth;
-        if (Math.hypot(b.sx - e.sx, b.sy - e.sy) < 56) {
+      if (b.data.parent && state.focus !== id) {
+        const parent = bodies[b.data.parent];
+        if (parent && Math.hypot(b.sx - parent.sx, b.sy - parent.sy) < 56) {
           show = false;
           b.crowded = true;
         }
@@ -720,6 +769,27 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       }
     }
 
+    // Moon-vs-moon label collision: hide the later moon in a pair.
+    const shownMoons = [];
+    for (const moon of MOONS) {
+      const mb = bodies[moon.id];
+      if (!mb.shown) continue;
+      let hide = false;
+      for (const other of shownMoons) {
+        if (Math.hypot(mb.sx - other.sx, mb.sy - other.sy) < 40) {
+          hide = true;
+          break;
+        }
+      }
+      if (hide) {
+        mb.shown = false;
+        mb.crowded = true;
+        mb.label.style.display = "none";
+      } else {
+        shownMoons.push({ sx: mb.sx, sy: mb.sy });
+      }
+    }
+
     glow.position.copy(bodies.Sun.group.position);
     glow.scale.setScalar(bodies.Sun.radius * 7);
     sunLight.position.copy(bodies.Sun.group.position);
@@ -728,15 +798,29 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const wantI = SUN_INTENSITY * Math.pow(1 / lightD, 0.6);
     sunLight.intensity += (wantI - sunLight.intensity) * 0.06;
 
-    moonOrbit.visible = state.showOrbits;
-    moonOrbit.position.set(bodies.Earth.pos[0] - c[0], bodies.Earth.pos[1] - c[1], bodies.Earth.pos[2] - c[2]);
-    moonOrbit.scale.setScalar(moonDistDisp);
-    const ahead = moonOffset(simMs + 6 * 3600000);
-    const nx = moonVec[1] * ahead[2] - moonVec[2] * ahead[1];
-    const ny = moonVec[2] * ahead[0] - moonVec[0] * ahead[2];
-    const nz = moonVec[0] * ahead[1] - moonVec[1] * ahead[0];
-    const nl = Math.hypot(nx, ny, nz);
-    if (nl > 0) moonOrbit.quaternion.setFromUnitVectors(UP, tmp.set(nx / nl, ny / nl, nz / nl));
+    for (const moon of MOONS) {
+      const ring = moonRings[moon.id];
+      const b = bodies[moon.id];
+      const parent = bodies[moon.parent];
+      ring.visible = state.showOrbits;
+      if (!ring.visible) continue;
+      ring.position.set(parent.pos[0] - c[0], parent.pos[1] - c[1], parent.pos[2] - c[2]);
+      const dispDist = Math.hypot(
+        b.pos[0] - parent.pos[0],
+        b.pos[1] - parent.pos[1],
+        b.pos[2] - parent.pos[2]
+      );
+      ring.scale.setScalar(dispDist || 1e-9);
+
+      const stepMs = Math.min(6 * 3600000, Math.abs(moon.periodDays) * 0.05 * 86400000);
+      const cur = moonOffset(moon.id, simMs);
+      const fut = moonOffset(moon.id, simMs + stepMs);
+      const nx = cur[1] * fut[2] - cur[2] * fut[1];
+      const ny = cur[2] * fut[0] - cur[0] * fut[2];
+      const nz = cur[0] * fut[1] - cur[1] * fut[0];
+      const nl = Math.hypot(nx, ny, nz);
+      if (nl > 1e-12) ring.quaternion.setFromUnitVectors(UP, tmp.set(nx / nl, ny / nl, nz / nl));
+    }
 
     sky.follow(camera.position);
 
