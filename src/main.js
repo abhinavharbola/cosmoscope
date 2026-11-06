@@ -7,6 +7,7 @@ import { almanac } from "./almanac.js";
 import { createRuler } from "./ruler.js";
 import { createDispatch } from "./dispatch.js";
 import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, createClock } from "./format.js";
+import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -235,7 +236,12 @@ MOMENTS.forEach((m) => {
     setScale(m.scale || 86400);
     sim.paused = false;
     sim.direction = 1;
-    focusOn(m.focus);
+    if (m.eclipse) {
+      if (!world.state.trueScale) world.setTrueScale(true);
+      focusOn(m.focus || "Earth", { eclipse: true });
+    } else {
+      focusOn(m.focus);
+    }
     closeMenus();
   });
   $("moments").appendChild(b);
@@ -482,9 +488,9 @@ function renderSource(id) {
   );
 }
 
-function focusOn(id) {
+function focusOn(id, options = {}) {
   if (!has(VIEWS, id) && !has(world.bodies, id)) return;
-  world.setFocus(id);
+  world.setFocus(id, options);
   Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
   renderPlate(id);
   document.title = has(VIEWS, id) ? "Cosmos" : `${id} | Cosmos`;
@@ -522,7 +528,16 @@ function updateLive() {
     }
     lightText += ` From Earth: ${formatDuration(eAU / C_AU_S)}.`;
   }
-  setText($("plate-light"), lightText);
+
+  let note = "";
+  if (id === "Earth") {
+    const s = nextSolarEclipse(sim.ms);
+    if (s && Math.abs(s.ms - sim.ms) < 3 * 3600000) note = `${s.kind} solar eclipse.`;
+  } else if (id === "Moon") {
+    const l = nextLunarEclipse(sim.ms);
+    if (l && Math.abs(l.ms - sim.ms) < 3 * 3600000) note = `${l.kind} lunar eclipse.`;
+  }
+  setText($("plate-light"), note ? `${lightText} ${note}` : lightText);
 }
 
 function isLive() {
@@ -550,6 +565,8 @@ function renderAlmanac() {
   const a = almanac(sim.ms);
   const rows = [["Earth", `${a.earthSunAU.toFixed(3)} AU, light ${formatDuration(a.earthSunLightSec)}`]];
   if (a.moonPhase) rows.push(["Moon", `${a.moonPhase}, ${Math.round(a.moonLit * 100)}%`]);
+  if (a.nextSolar) rows.push(["Solar", `${a.nextSolar.kind}, ${a.nextSolar.date}`]);
+  if (a.nextLunar) rows.push(["Lunar", `${a.nextLunar.kind}, ${a.nextLunar.date}`]);
   const events = [a.nextQuarter, a.nextSeason].filter(Boolean).sort((x, y) => x.ms - y.ms);
   if (events.length) rows.push(["Next", `${events[0].name}, ${events[0].date}`]);
   setHTML($("almanac"), rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));

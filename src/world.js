@@ -25,8 +25,6 @@ const TEXTURE_ORDER = [
   "Titan", "Triton",
 ];
 
-// Per-parent moon-system bookkeeping: each planet's moons sit on a
-// display ring between moonBaseR and moonOuterR, sorted by semiMajorAU.
 const MOON_SYSTEMS = {};
 for (const m of MOONS) {
   const s = (MOON_SYSTEMS[m.parent] ||= { moons: [], aMin: Infinity, aMax: -Infinity });
@@ -194,15 +192,71 @@ function pulseMaterial() {
   });
 }
 
-function patchNightLights(mat, sunView) {
+// Patches a MeshStandardMaterial to add:
+//   - night-lights gating (uSunView) when `nightUniform` is given
+//   - umbra/penumbra shadow cone when `eclipse` uniforms are given
+// The shadow uses world coordinates, so the caster position must be in
+// camera-relative scene coords (same frame as vWorldEclipse).
+function patchShadow(mat, nightUniform, eclipse) {
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uSunView = sunView;
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
-      .replace(
+    if (nightUniform) shader.uniforms.uSunView = nightUniform;
+    if (eclipse) {
+      shader.uniforms.uCasterPos = eclipse.casterPos;
+      shader.uniforms.uSunPos = eclipse.sunPos;
+      shader.uniforms.uCasterRadius = eclipse.casterRadius;
+      shader.uniforms.uSunRadius = eclipse.sunRadius;
+      shader.uniforms.uUmbraLength = eclipse.umbraLength;
+    }
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWorldEclipse;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorldEclipse = (modelMatrix * vec4(position, 1.0)).xyz;");
+    let prelude = "";
+    if (nightUniform) prelude += "uniform vec3 uSunView;\n";
+    if (eclipse) {
+      prelude +=
+        "uniform vec3 uCasterPos;\nuniform vec3 uSunPos;\nuniform float uCasterRadius;\nuniform float uSunRadius;\nuniform float uUmbraLength;\n";
+    }
+    prelude += "varying vec3 vWorldEclipse;";
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <common>",
+      `#include <common>\n${prelude}`
+    );
+    if (nightUniform) {
+      shader.fragmentShader = shader.fragmentShader.replace(
         "#include <emissivemap_fragment>",
         "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 1.0 - smoothstep(-0.14, 0.06, dot(normalize(vNormal), uSunView));"
       );
+    }
+    if (eclipse) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <opaque_fragment>",
+        [
+          "{",
+          "  vec3 C = uCasterPos;",
+          "  vec3 S = uSunPos;",
+          "  vec3 S_to_C = C - S;",
+          "  float D = length(S_to_C);",
+          "  if (D > 1e-9 && uCasterRadius > 0.0) {",
+          "    vec3 awayFromSun = S_to_C / D;",
+          "    vec3 V = vWorldEclipse - C;",
+          "    float t = dot(V, awayFromSun);",
+          "    if (t > 0.0) {",
+          "      float perp = length(V - t * awayFromSun);",
+          "      float umbraR = max(0.0, uCasterRadius * (1.0 - t / uUmbraLength));",
+          "      float penumbraR = uCasterRadius + t * uSunRadius / D;",
+          "      if (perp < umbraR) {",
+          "        outgoingLight *= 0.05;",
+          "      } else if (perp < penumbraR) {",
+          "        float f = (perp - umbraR) / max(penumbraR - umbraR, 1e-9);",
+          "        outgoingLight *= mix(0.05, 1.0, f);",
+          "      }",
+          "    }",
+          "  }",
+          "}",
+          "#include <opaque_fragment>",
+        ].join("\n")
+      );
+    }
   };
 }
 
@@ -249,10 +303,28 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     surfaces: {},
     textureQuality: BASE_TIER,
     textureMs: null,
+    eclipseView: false,
   };
   let surfaceManifest = Object.create(null);
   const surfaceTokens = {};
   const patched = [];
+
+  const eclipseUniforms = {
+    Earth: {
+      casterPos: { value: new THREE.Vector3() },
+      sunPos: { value: new THREE.Vector3() },
+      casterRadius: { value: 0 },
+      sunRadius: { value: 0 },
+      umbraLength: { value: 1 },
+    },
+    Moon: {
+      casterPos: { value: new THREE.Vector3() },
+      sunPos: { value: new THREE.Vector3() },
+      casterRadius: { value: 0 },
+      sunRadius: { value: 0 },
+      umbraLength: { value: 1 },
+    },
+  };
 
   renderer.debug.onShaderError = (gl, program, vs, fs) => {
     if (state.degraded) return;
@@ -491,7 +563,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       mat.emissive.set(0xffffff);
       mat.emissiveIntensity = 1.5;
       b.night = { value: new THREE.Vector3(0, 0, 1) };
-      patchNightLights(mat, b.night);
+    }
+    const eclipse = eclipseUniforms[b.data.id];
+    if (b.night || eclipse) {
+      patchShadow(mat, b.night, eclipse);
       patched.push(mat);
     }
     mat.needsUpdate = true;
@@ -615,18 +690,31 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
   function desiredDistance(id) {
     if (isView(id)) return VIEWS[id].dist;
+    if (state.eclipseView) return 0.006;
     const b = bodies[id];
     const ringFactor = b.data.rings ? 2.4 : 1;
+    if (state.trueScale) {
+      const sys = MOON_SYSTEMS[id];
+      if (sys && Number.isFinite(sys.aMax)) {
+        return Math.max(b.radius * 4 * ringFactor, sys.aMax * 1.5);
+      }
+      return Math.max(b.radius * 3, 1e-7);
+    }
     return Math.max(b.radius * 4 * ringFactor, 1e-7);
   }
 
-  function setFocus(id) {
+  function setFocus(id, options = {}) {
     if (!isView(id) && !Object.hasOwn(bodies, id)) return;
     state.focus = id;
+    state.eclipseView = !!options.eclipse;
     syncTiers();
     const fromDist = camera.position.length();
     state.trans = { from: state.center.slice(), t0: performance.now(), dur: 2200, fromDist, id };
-    controls.minDistance = isView(id) ? 0.01 : displayRadius(bodies[id].data) * 1.15;
+    controls.minDistance = options.eclipse
+      ? 0.001
+      : isView(id)
+        ? 0.01
+        : displayRadius(bodies[id].data) * 1.15;
   }
 
   function update(simMs, timeScale, nowMs) {
@@ -640,7 +728,6 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
 
     for (const id of Object.keys(bodies)) bodies[id].radius = displayRadius(bodies[id].data);
 
-    // Moons: display distance is per-parent, between moonBaseR and moonOuterR.
     for (const moon of MOONS) {
       const b = bodies[moon.id];
       const parent = bodies[moon.parent];
@@ -695,6 +782,40 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const tanHalf = Math.tan((camera.fov * Math.PI) / 360);
     const sunRel = new THREE.Vector3(-c[0], -c[1], -c[2]);
     const tmp = new THREE.Vector3();
+
+    // Eclipse shadow uniforms. Positions are camera-relative scene coords,
+    // matching vWorldEclipse in the patched fragment shaders. The umbra
+    // geometry is derived from true radii, so the shadow lands on the
+    // surface at true scale where the moon is at its true position.
+    {
+      const R_SUN_AU = 695700 / AU_KM;
+      const R_MOON_AU = 1737.4 / AU_KM;
+      const R_EARTH_AU = 6371 / AU_KM;
+      const earthX = bodies.Earth.pos[0] - c[0];
+      const earthY = bodies.Earth.pos[1] - c[1];
+      const earthZ = bodies.Earth.pos[2] - c[2];
+      const moonOff = moonOffset("Moon", simMs);
+      const moonX = earthX + moonOff[0];
+      const moonY = earthY + moonOff[1];
+      const moonZ = earthZ + moonOff[2];
+
+      const earthUni = eclipseUniforms.Earth;
+      earthUni.casterPos.value.set(moonX, moonY, moonZ);
+      earthUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
+      earthUni.casterRadius.value = R_MOON_AU;
+      earthUni.sunRadius.value = R_SUN_AU;
+      const dEM = Math.hypot(moonX - sunRel.x, moonY - sunRel.y, moonZ - sunRel.z);
+      earthUni.umbraLength.value = (R_MOON_AU * dEM) / (R_SUN_AU - R_MOON_AU) || 1;
+
+      const moonUni = eclipseUniforms.Moon;
+      moonUni.casterPos.value.set(earthX, earthY, earthZ);
+      moonUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
+      moonUni.casterRadius.value = R_EARTH_AU;
+      moonUni.sunRadius.value = R_SUN_AU;
+      const dM = Math.hypot(earthX - sunRel.x, earthY - sunRel.y, earthZ - sunRel.z);
+      moonUni.umbraLength.value = (R_EARTH_AU * dM) / (R_SUN_AU - R_EARTH_AU) || 1;
+    }
+
     const gmst = gmstRad(simMs);
     const shellScale = state.trueScale ? 1.02 : 1.05;
     const camLen = camera.position.length();
@@ -769,7 +890,6 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       }
     }
 
-    // Moon-vs-moon label collision: hide the later moon in a pair.
     const shownMoons = [];
     for (const moon of MOONS) {
       const mb = bodies[moon.id];
