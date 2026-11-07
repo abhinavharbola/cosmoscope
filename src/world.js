@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { SUN, PLANETS, MOONS, AU_KM, C_AU_S, POLES } from "./data.js";
-import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, gmstRad, poleVector, distanceAU } from "./ephemeris.js";
+import { helioPosition, moonOffset, orbitSamples, orbitalPeriodDays, greenwichRaRad, poleVector, distanceAU } from "./ephemeris.js";
 import { orbitWindowStart } from "./timeutil.js";
 import { moonSpinAngle, nodeOffset, primeMeridianRad } from "./frame.js";
 import { buildMaps, sunMap, ringTexture, glowTexture, loadManifest, loadSurface, disposeMaps } from "./textures.js";
 import { TIERS, BASE_TIER, availableTiers, surfaceKey } from "./texmanifest.js";
 import { createSky } from "./sky.js";
+import { circleSprite, radialRing, atmosphereMaterial, pulseMaterial, patchShadow } from "./materials.js";
+import { createSpin, stepSpin } from "./spin.js";
+import { crossingSeconds } from "./pulse.js";
 import { VIEWS, OVERVIEW_DIST } from "./views.js";
 
 const ART_BASE = 0.035;
@@ -17,12 +20,10 @@ const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
 const SUN_INTENSITY = 7;
 const UP = new THREE.Vector3(0, 1, 0);
+const TEXTURE_FIRST = ["Earth", "Sun", "Jupiter", "Saturn", "Mars"];
 const TEXTURE_ORDER = [
-  "Earth", "Sun", "Jupiter", "Saturn", "Mars", "Venus", "Mercury",
-  "Neptune", "Uranus", "Pluto",
-  "Moon", "Phobos", "Deimos",
-  "Io", "Europa", "Ganymede", "Callisto",
-  "Titan", "Triton",
+  ...TEXTURE_FIRST,
+  ...[SUN, ...PLANETS, ...MOONS].map((b) => b.id).filter((id) => !TEXTURE_FIRST.includes(id)),
 ];
 
 const MOON_SYSTEMS = {};
@@ -32,8 +33,6 @@ for (const m of MOONS) {
   s.aMin = Math.min(s.aMin, m.semiMajorAU);
   s.aMax = Math.max(s.aMax, m.semiMajorAU);
 }
-
-export { VIEWS };
 
 const isView = (id) => Object.hasOwn(VIEWS, id);
 
@@ -49,215 +48,6 @@ function trueRadius(body) {
 function smoothstep(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
-}
-
-function circleSprite(color) {
-  const size = 64;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d");
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false })
-  );
-}
-
-function radialRing(inner, outer, tex) {
-  const geo = new THREE.RingGeometry(inner, outer, 192, 1);
-  const pos = geo.attributes.position;
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) {
-    const r = Math.hypot(pos.getX(i), pos.getY(i));
-    uv.setXY(i, (r - inner) / (outer - inner), 0.5);
-  }
-  geo.rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshStandardMaterial({
-    map: tex,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    color: 0xe8e8e8,
-    roughness: 1,
-    metalness: 0,
-  });
-  const sun = { value: new THREE.Vector3(1, 0, 0) };
-  patchRingShadow(mat, sun);
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.userData.sun = sun;
-  return mesh;
-}
-
-function patchRingShadow(mat, sunLocal) {
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uSunLocal = sunLocal;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vLocal;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocal = position;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uSunLocal;\nvarying vec3 vLocal;")
-      .replace(
-        "#include <opaque_fragment>",
-        [
-          "float ringShadow = 1.0;",
-          "vec3 sunDirLocal = normalize(uSunLocal);",
-          "float along = dot(-vLocal, sunDirLocal);",
-          "if (along > 0.0) {",
-          "  float miss = sqrt(max(dot(vLocal, vLocal) - along * along, 0.0));",
-          "  ringShadow = smoothstep(0.96, 1.04, miss);",
-          "}",
-          "outgoingLight *= ringShadow;",
-          "#include <opaque_fragment>",
-        ].join("\n")
-      );
-  };
-}
-
-function atmosphereMaterial(cfg) {
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      uColor: { value: new THREE.Vector3(cfg.color[0], cfg.color[1], cfg.color[2]) },
-      uPower: { value: cfg.power },
-      uIntensity: { value: cfg.intensity },
-      uSun: { value: new THREE.Vector3(1, 0, 0) },
-    },
-    vertexShader: `
-      #include <common>
-      #include <logdepthbuf_pars_vertex>
-      varying vec3 vWN;
-      varying vec3 vWP;
-      void main() {
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vWP = wp.xyz;
-        vWN = normalize(mat3(modelMatrix) * normal);
-        gl_Position = projectionMatrix * viewMatrix * wp;
-        #include <logdepthbuf_vertex>
-      }
-    `,
-    fragmentShader: `
-      #include <logdepthbuf_pars_fragment>
-      uniform vec3 uColor;
-      uniform float uPower;
-      uniform float uIntensity;
-      uniform vec3 uSun;
-      varying vec3 vWN;
-      varying vec3 vWP;
-      void main() {
-        #include <logdepthbuf_fragment>
-        vec3 n = normalize(vWN);
-        vec3 v = normalize(cameraPosition - vWP);
-        float f = pow(1.0 - max(dot(n, v), 0.0), uPower);
-        float lit = smoothstep(-0.3, 0.5, dot(n, uSun));
-        gl_FragColor = vec4(uColor * uIntensity, clamp(f * lit, 0.0, 1.0));
-      }
-    `,
-  });
-}
-
-function pulseMaterial() {
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    uniforms: { uOpacity: { value: 0.7 } },
-    vertexShader: `
-      varying vec3 vN;
-      varying vec3 vV;
-      void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vN = normalize(normalMatrix * normal);
-        vV = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: `
-      uniform float uOpacity;
-      varying vec3 vN;
-      varying vec3 vV;
-      void main() {
-        float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 4.0);
-        gl_FragColor = vec4(1.0, 0.82, 0.45, rim * uOpacity);
-      }
-    `,
-  });
-}
-
-// Patches a MeshStandardMaterial to add:
-//   - night-lights gating (uSunView) when `nightUniform` is given
-//   - umbra/penumbra shadow cone when `eclipse` uniforms are given
-// The shadow uses world coordinates, so the caster position must be in
-// camera-relative scene coords (same frame as vWorldEclipse).
-function patchShadow(mat, nightUniform, eclipse) {
-  mat.onBeforeCompile = (shader) => {
-    if (nightUniform) shader.uniforms.uSunView = nightUniform;
-    if (eclipse) {
-      shader.uniforms.uCasterPos = eclipse.casterPos;
-      shader.uniforms.uSunPos = eclipse.sunPos;
-      shader.uniforms.uCasterRadius = eclipse.casterRadius;
-      shader.uniforms.uSunRadius = eclipse.sunRadius;
-      shader.uniforms.uUmbraLength = eclipse.umbraLength;
-    }
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWorldEclipse;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorldEclipse = (modelMatrix * vec4(position, 1.0)).xyz;");
-    let prelude = "";
-    if (nightUniform) prelude += "uniform vec3 uSunView;\n";
-    if (eclipse) {
-      prelude +=
-        "uniform vec3 uCasterPos;\nuniform vec3 uSunPos;\nuniform float uCasterRadius;\nuniform float uSunRadius;\nuniform float uUmbraLength;\n";
-    }
-    prelude += "varying vec3 vWorldEclipse;";
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <common>",
-      `#include <common>\n${prelude}`
-    );
-    if (nightUniform) {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <emissivemap_fragment>",
-        "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 1.0 - smoothstep(-0.14, 0.06, dot(normalize(vNormal), uSunView));"
-      );
-    }
-    if (eclipse) {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <opaque_fragment>",
-        [
-          "{",
-          "  vec3 C = uCasterPos;",
-          "  vec3 S = uSunPos;",
-          "  vec3 S_to_C = C - S;",
-          "  float D = length(S_to_C);",
-          "  if (D > 1e-9 && uCasterRadius > 0.0) {",
-          "    vec3 awayFromSun = S_to_C / D;",
-          "    vec3 V = vWorldEclipse - C;",
-          "    float t = dot(V, awayFromSun);",
-          "    if (t > 0.0) {",
-          "      float perp = length(V - t * awayFromSun);",
-          "      float umbraR = max(0.0, uCasterRadius * (1.0 - t / uUmbraLength));",
-          "      float penumbraR = uCasterRadius + t * uSunRadius / D;",
-          "      if (perp < umbraR) {",
-          "        outgoingLight *= 0.05;",
-          "      } else if (perp < penumbraR) {",
-          "        float f = (perp - umbraR) / max(penumbraR - umbraR, 1e-9);",
-          "        outgoingLight *= mix(0.05, 1.0, f);",
-          "      }",
-          "    }",
-          "  }",
-          "}",
-          "#include <opaque_fragment>",
-        ].join("\n")
-      );
-    }
-  };
 }
 
 export function createWorld(canvas, labelsEl, hooks = {}) {
@@ -296,6 +86,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     focus: "Overview",
     center: [0, 0, 0],
     trans: null,
+    lastNow: null,
     hoverId: null,
     orbitBuiltMs: null,
     degraded: false,
@@ -331,6 +122,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     state.degraded = true;
     console.warn("A custom shader failed to compile. Falling back to plain materials.");
     patched.forEach((m) => {
+      m.customProgramCacheKey = () => "plain";
       m.onBeforeCompile = () => {};
       m.needsUpdate = true;
     });
@@ -420,6 +212,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       orbitCol: null,
       orbitRGB: orbit ? new THREE.Color(data.palette[0]).lerp(new THREE.Color(0xffffff), 0.3) : null,
       sunDir: new THREE.Vector3(1, 0, 0),
+      spin: createSpin(),
+      orbitHead: -1,
       night: null,
       ringSun: rings ? rings.userData.sun : null,
       tiltInv: tilt.quaternion.clone().invert(),
@@ -492,6 +286,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const n = period > 20000 ? 720 : 360;
     const pts = orbitSamples(p.id, orbitWindowStart(startMs, period), period, n);
     b.orbitN = n;
+    b.orbitHead = -1;
     b.orbitPts = pts;
     b.orbitCol = new Float32Array(n * 4);
     b.orbit.geometry.dispose();
@@ -526,6 +321,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
         head = i;
       }
     }
+    if (head === b.orbitHead) return;
+    b.orbitHead = head;
     const col = b.orbitCol;
     const c = b.orbitRGB;
     for (let i = 0; i < n; i++) {
@@ -613,7 +410,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     surfaceTokens[id] = (surfaceTokens[id] || 0) + 1;
     const token = surfaceTokens[id];
     if (cur.key === surfaceKey(entry, wanted)) return;
-    const loaded = await loadSurface(entry, wanted);
+    const loaded = await loadSurface(entry, wanted, cur.files);
     if (!loaded) return;
     if (token !== surfaceTokens[id]) {
       disposeMaps(loaded.maps);
@@ -622,6 +419,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     swapMaps(b, loaded.maps);
     cur.tier = loaded.tier;
     cur.key = loaded.key;
+    cur.files = loaded.files;
   }
 
   function syncTiers() {
@@ -644,6 +442,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   async function loadTextures() {
     const started = performance.now();
     surfaceManifest = await loadManifest();
+    if (!availableTiers(surfaceManifest).includes(state.textureQuality)) state.textureQuality = BASE_TIER;
     try {
       await sky.load();
     } catch (err) {
@@ -666,6 +465,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
           state.surfaces[id] = {
             tier: real.tier,
             key: real.key,
+            files: real.files,
             credit: entry.credit,
             license: entry.license,
             note: entry.note,
@@ -722,7 +522,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     else if (Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs, false);
     if (rebuildQueue.length) buildOrbit(rebuildQueue.shift(), rebuildMs);
 
-    const earth = helioPosition("Earth", simMs);
+    const frameDt = state.lastNow === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - state.lastNow) / 1000));
+    state.lastNow = nowMs;
     for (const p of PLANETS) bodies[p.id].pos = helioPosition(p.id, simMs);
     bodies.Sun.pos = [0, 0, 0];
 
@@ -762,7 +563,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const targetPos = isView(state.focus) ? [0, 0, 0] : bodies[state.focus].pos;
 
     if (state.trans) {
-      const t = Math.min(1, (nowMs - state.trans.t0) / state.trans.dur);
+      const t = Math.min(1, Math.max(0, (nowMs - state.trans.t0) / state.trans.dur));
       const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
       state.center = [
         state.trans.from[0] + (targetPos[0] - state.trans.from[0]) * e,
@@ -782,11 +583,6 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const tanHalf = Math.tan((camera.fov * Math.PI) / 360);
     const sunRel = new THREE.Vector3(-c[0], -c[1], -c[2]);
     const tmp = new THREE.Vector3();
-
-    // Eclipse shadow uniforms. Positions are camera-relative scene coords,
-    // matching vWorldEclipse in the patched fragment shaders. The umbra
-    // geometry is derived from true radii, so the shadow lands on the
-    // surface at true scale where the moon is at its true position.
     {
       const R_SUN_AU = 695700 / AU_KM;
       const R_MOON_AU = 1737.4 / AU_KM;
@@ -802,7 +598,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const earthUni = eclipseUniforms.Earth;
       earthUni.casterPos.value.set(moonX, moonY, moonZ);
       earthUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
-      earthUni.casterRadius.value = R_MOON_AU;
+      earthUni.casterRadius.value = state.trueScale ? R_MOON_AU : 0;
       earthUni.sunRadius.value = R_SUN_AU;
       const dEM = Math.hypot(moonX - sunRel.x, moonY - sunRel.y, moonZ - sunRel.z);
       earthUni.umbraLength.value = (R_MOON_AU * dEM) / (R_SUN_AU - R_MOON_AU) || 1;
@@ -810,13 +606,13 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const moonUni = eclipseUniforms.Moon;
       moonUni.casterPos.value.set(earthX, earthY, earthZ);
       moonUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
-      moonUni.casterRadius.value = R_EARTH_AU;
+      moonUni.casterRadius.value = state.trueScale ? R_EARTH_AU : 0;
       moonUni.sunRadius.value = R_SUN_AU;
       const dM = Math.hypot(earthX - sunRel.x, earthY - sunRel.y, earthZ - sunRel.z);
       moonUni.umbraLength.value = (R_EARTH_AU * dM) / (R_SUN_AU - R_EARTH_AU) || 1;
     }
 
-    const gmst = gmstRad(simMs);
+    const earthSpin = greenwichRaRad(simMs);
     const shellScale = state.trueScale ? 1.02 : 1.05;
     const camLen = camera.position.length();
     const fadeId = state.focus === "Moon" ? "Earth" : state.focus;
@@ -831,16 +627,15 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       b.tilt.scale.setScalar(b.radius);
 
       const periodSec = Math.abs(b.data.rotationHours) * 3600;
-      const perFrame = (Math.abs(timeScale) * 2 * Math.PI) / periodSec / 60;
       const spinSign = b.data.spinSign ?? 1;
       if (b.data.parent) {
         b.mesh.rotation.y = moonSpinAngle(b._trueOffset, b.tilt.quaternion);
-      } else if (perFrame >= 0.5) {
-        b.mesh.rotation.y = (nowMs / 1000) * 0.3 * spinSign;
-      } else if (id === "Earth") {
-        b.mesh.rotation.y = gmst;
-      } else if (b.data.W0 !== undefined) {
-        b.mesh.rotation.y = primeMeridianRad(b.data.W0, b.data.Wdot, simMs) + b.phi;
+      } else {
+        const rate = periodSec > 0 ? (Math.abs(timeScale) * 2 * Math.PI) / periodSec : 0;
+        let trueAngle = null;
+        if (id === "Earth") trueAngle = earthSpin;
+        else if (b.data.W0 !== undefined) trueAngle = primeMeridianRad(b.data.W0, b.data.Wdot, simMs) + b.phi;
+        b.mesh.rotation.y = stepSpin(b.spin, trueAngle, rate, spinSign, frameDt);
       }
       if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y + (nowMs / 1000) * 0.0008;
 
@@ -916,7 +711,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     const lit = isView(state.focus) ? null : state.focus === "Moon" ? bodies.Earth : bodies[state.focus];
     const lightD = lit && lit.data.id !== "Sun" ? Math.max(0.39, distanceAU(lit.pos)) : 1;
     const wantI = SUN_INTENSITY * Math.pow(1 / lightD, 0.6);
-    sunLight.intensity += (wantI - sunLight.intensity) * 0.06;
+    sunLight.intensity += (wantI - sunLight.intensity) * (1 - Math.exp(-3.6 * frameDt));
 
     for (const moon of MOONS) {
       const ring = moonRings[moon.id];
@@ -960,14 +755,11 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
           const d = distanceAU(bodies[p.id].pos);
           if (!pulse.logged.has(p.id) && pulse.radius >= d) {
             const prevD = pulse.prevDist[p.id] ?? d;
-            const f0 = pulse.prevElapsed * C_AU_S - prevD;
-            const f1 = elapsed * C_AU_S - d;
-            const frac = f1 - f0 > 0 ? Math.min(1, Math.max(0, -f0 / (f1 - f0))) : 1;
             pulse.logged.add(p.id);
             arrivals.push({
               id: p.id,
               name: p.name,
-              seconds: pulse.prevElapsed + frac * (elapsed - pulse.prevElapsed),
+              seconds: crossingSeconds(pulse.prevElapsed, elapsed, prevD, d, C_AU_S),
               au: d,
             });
           }
@@ -1041,6 +833,9 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     }
     down = null;
   });
+  canvas.addEventListener("pointercancel", () => {
+    down = null;
+  });
   canvas.addEventListener("pointermove", (e) => {
     if (e.buttons) return;
     state.hoverId = pick(e.clientX, e.clientY);
@@ -1066,6 +861,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function resize() {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);

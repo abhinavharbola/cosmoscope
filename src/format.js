@@ -23,13 +23,20 @@ function plural(value, word) {
   return `${value} ${word}${Number(value) === 1 ? "" : "s"}`;
 }
 
+const UNIT_CHAIN = [
+  ["min", 60, 60],
+  ["hr", 3600, 24],
+  ["day", 86400, 7],
+  ["week", 604800, 30 / 7],
+  ["month", 2629800, 11.52],
+  ["year", 31557600, Infinity],
+];
+
 export function formatUnit(sec) {
   if (sec < 59.5) return `${Math.round(sec)} s`;
-  if (sec < 3600) return `${trim(sec / 60)} min`;
-  if (sec < 86400) return `${trim(sec / 3600)} hr`;
-  if (sec < 86400 * 7) return plural(trim(sec / 86400), "day");
-  if (sec < 86400 * 30) return plural(trim(sec / 604800), "week");
-  if (sec < 31557600 * 0.96) return plural(trim(sec / 2629800), "month");
+  for (const [name, size, max] of UNIT_CHAIN) {
+    if (Number((sec / size).toFixed(1)) < max) return plural(trim(sec / size), name);
+  }
   return plural(trim(sec / 31557600), "year");
 }
 
@@ -45,9 +52,30 @@ export function formatOffset(ms) {
 }
 
 export function fmtNum(n, sig = 4) {
-  if (n === null || n === undefined) return "n/a";
+  if (n === null || n === undefined || !Number.isFinite(n)) return "n/a";
+  if (n === 0) return "0";
   if (Math.abs(n) >= 10000) return Math.round(n).toLocaleString("en-US");
-  return Number(n.toPrecision(sig)).toString();
+  const p = Number(n.toPrecision(sig));
+  if (Math.abs(p) >= 1e-6) return p.toString();
+  return p.toExponential(sig - 1).replace(/\.?0+e/, "e");
+}
+
+export function formatGravity(g) {
+  if (g === null || g === undefined || !Number.isFinite(g)) return "n/a";
+  return g >= 1 ? g.toFixed(1) : fmtNum(g, 2);
+}
+
+export function formatMass(massE24) {
+  if (massE24 === null || massE24 === undefined || !Number.isFinite(massE24) || massE24 <= 0) return "n/a";
+  if (massE24 >= 0.01) return `${fmtNum(massE24)} x 10<sup>24</sup> kg`;
+  const kg = massE24 * 1e24;
+  let exp = Math.floor(Math.log10(kg));
+  let mant = Number((kg / 10 ** exp).toPrecision(4));
+  if (mant >= 10) {
+    mant /= 10;
+    exp += 1;
+  }
+  return `${mant} x 10<sup>${exp}</sup> kg`;
 }
 
 export function formatAU(au) {

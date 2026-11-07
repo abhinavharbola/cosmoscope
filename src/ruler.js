@@ -12,6 +12,9 @@ export function createRuler(els) {
     return { id: p.id, el, label: el.querySelector("b") };
   });
 
+  const MAX_LOG = 2;
+  let entries = [];
+
   function pickRange(radius) {
     const need = Math.max(radius * 1.08, 1.8);
     return RANGES.find((r) => r >= need) || RANGES[RANGES.length - 1];
@@ -20,13 +23,16 @@ export function createRuler(els) {
   return {
     show() {
       els.root.hidden = false;
+      entries = [];
       els.last.innerHTML = "";
     },
     hide() {
       els.root.hidden = true;
     },
     log(html) {
-      els.last.innerHTML = html;
+      entries.push(html);
+      if (entries.length > MAX_LOG) entries.shift();
+      els.last.innerHTML = entries.join("; ");
     },
     update(radiusAU, elapsedSec, distances) {
       const range = pickRange(radiusAU);

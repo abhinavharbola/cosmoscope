@@ -1,50 +1,45 @@
+import { readStore, writeStore, removeStore, storeKeys } from "./storage.js";
+
 const BASE = "https://api.nasa.gov";
 const TTL_MS = 60 * 60 * 1000;
 
 export function getApiKey() {
-  try {
-    return localStorage.getItem("nasa_api_key") || "DEMO_KEY";
-  } catch {
-    return "DEMO_KEY";
-  }
+  return readStore("nasa_api_key") || "DEMO_KEY";
 }
 
 export function setApiKey(key) {
-  try {
-    if (key) localStorage.setItem("nasa_api_key", key.trim());
-    else localStorage.removeItem("nasa_api_key");
-  } catch {}
+  const clean = String(key || "").trim();
+  if (clean) writeStore("nasa_api_key", clean);
+  else removeStore("nasa_api_key");
 }
 
 export function clearCache() {
-  try {
-    Object.keys(localStorage)
-      .filter((k) => k.startsWith("nasa_cache_"))
-      .forEach((k) => localStorage.removeItem(k));
-  } catch {
-    return;
-  }
+  storeKeys()
+    .filter((k) => k.startsWith("nasa_cache_"))
+    .forEach((k) => removeStore(k));
 }
 
 function ymd(d) {
   return d.toISOString().slice(0, 10);
 }
 
-function prune() {
+function readEntry(storeKey) {
+  const raw = readStore(storeKey);
+  if (!raw) return null;
   try {
-    const cutoff = Date.now() - 2 * 86400000;
-    for (const k of Object.keys(localStorage)) {
-      if (!k.startsWith("nasa_cache_")) continue;
-      let t = 0;
-      try {
-        t = JSON.parse(localStorage.getItem(k)).t;
-      } catch {
-        t = 0;
-      }
-      if (!(t > cutoff)) localStorage.removeItem(k);
-    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed.t === "number" ? parsed : null;
   } catch {
-    return;
+    return null;
+  }
+}
+
+function prune() {
+  const cutoff = Date.now() - 2 * 86400000;
+  for (const k of storeKeys()) {
+    if (!k.startsWith("nasa_cache_")) continue;
+    const entry = readEntry(k);
+    if (!entry || !(entry.t > cutoff)) removeStore(k);
   }
 }
 
@@ -52,24 +47,15 @@ prune();
 
 async function cached(name, loader) {
   const storeKey = `nasa_cache_${name}`;
-  try {
-    const raw = localStorage.getItem(storeKey);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Date.now() - parsed.t < TTL_MS) return { data: parsed.d, stale: false };
-    }
-  } catch {}
+  const fresh = readEntry(storeKey);
+  if (fresh && Date.now() - fresh.t < TTL_MS) return { data: fresh.d, stale: false };
   try {
     const data = await loader();
-    try {
-      localStorage.setItem(storeKey, JSON.stringify({ t: Date.now(), d: data }));
-    } catch {}
+    writeStore(storeKey, JSON.stringify({ t: Date.now(), d: data }));
     return { data, stale: false };
   } catch (err) {
-    try {
-      const raw = localStorage.getItem(storeKey);
-      if (raw) return { data: JSON.parse(raw).d, stale: true };
-    } catch {}
+    const old = readEntry(storeKey);
+    if (old) return { data: old.d, stale: true };
     throw err;
   }
 }
@@ -78,6 +64,10 @@ function proxyBase() {
   const m = document.querySelector('meta[name="nasa-proxy"]');
   const v = m && m.getAttribute("content");
   return v ? v.trim().replace(/\/+$/, "") : "";
+}
+
+export function usesProxy() {
+  return proxyBase() !== "";
 }
 
 async function getJson(path) {
@@ -103,14 +93,14 @@ export function loadNeo() {
     const rows = list
       .filter((n) => n.close_approach_data && n.close_approach_data[0])
       .map((n) => {
-      const ca = n.close_approach_data[0];
-      return {
-        name: n.name.replace(/[()]/g, "").trim(),
-        hazardous: n.is_potentially_hazardous_asteroid,
-        lunarDistance: parseFloat(ca.miss_distance.lunar),
-        speedKmS: parseFloat(ca.relative_velocity.kilometers_per_second),
-        diameterM: n.estimated_diameter.meters.estimated_diameter_max,
-      };
+        const ca = n.close_approach_data[0];
+        return {
+          name: n.name.replace(/[()]/g, "").trim(),
+          hazardous: n.is_potentially_hazardous_asteroid,
+          lunarDistance: parseFloat(ca.miss_distance.lunar),
+          speedKmS: parseFloat(ca.relative_velocity.kilometers_per_second),
+          diameterM: n.estimated_diameter.meters.estimated_diameter_max,
+        };
       });
     rows.sort((a, b) => a.lunarDistance - b.lunarDistance);
     return { count: rows.length, closest: rows[0] || null, hazardous: rows.filter((r) => r.hazardous).length };

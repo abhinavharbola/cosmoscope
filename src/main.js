@@ -2,11 +2,14 @@ import { PLANETS, SUN, MOONS, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURC
 import { clampMs, distanceAU, separationAU, moonOffset } from "./ephemeris.js";
 import { inputDate, parseInputDate } from "./dates.js";
 import { parseHash, buildHash, SCALE_MIN, SCALE_MAX } from "./hash.js";
-import { createWorld, VIEWS } from "./world.js";
+import { createWorld } from "./world.js";
+import { VIEWS } from "./views.js";
+import { esc } from "./escape.js";
+import { readStore, writeStore } from "./storage.js";
 import { almanac } from "./almanac.js";
 import { createRuler } from "./ruler.js";
 import { createDispatch } from "./dispatch.js";
-import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, createClock } from "./format.js";
+import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, formatGravity, formatMass, createClock } from "./format.js";
 import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
 
 const $ = (id) => document.getElementById(id);
@@ -40,14 +43,8 @@ const has = (o, k) => Object.hasOwn(o, k);
 
 const sim = { ms: Date.now(), scale: 3600, direction: 1, paused: false, tz: "local" };
 
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-
-try {
-  const saved = localStorage.getItem("cosmos_tz");
-  if (saved === "utc" || saved === "local") sim.tz = saved;
-} catch {
-  sim.tz = "local";
-}
+const savedTz = readStore("cosmos_tz");
+if (savedTz === "utc" || savedTz === "local") sim.tz = savedTz;
 
 let world;
 try {
@@ -89,12 +86,8 @@ createDispatch({
   panel: $("dispatch"),
 });
 
-try {
-  const savedTex = localStorage.getItem("cosmos_tex");
-  if (savedTex) world.setTextureQuality(savedTex);
-} catch {
-  world.setTextureQuality("2k");
-}
+const savedTex = readStore("cosmos_tex");
+if (savedTex) world.setTextureQuality(savedTex);
 
 const clock = createClock();
 const textCache = new Map();
@@ -179,13 +172,8 @@ $("wordmark").addEventListener("click", () => focusOn("Overview"));
 
 $("clock").addEventListener("click", () => {
   sim.tz = sim.tz === "local" ? "utc" : "local";
-  try {
-    localStorage.setItem("cosmos_tz", sim.tz);
-  } catch {
-    return;
-  } finally {
-    renderClock();
-  }
+  writeStore("cosmos_tz", sim.tz);
+  renderClock();
 });
 
 $("date-input").addEventListener("change", (e) => {
@@ -228,6 +216,8 @@ document.addEventListener("click", (e) => {
   });
 });
 
+let restoreTrueScale = null;
+
 MOMENTS.forEach((m) => {
   const b = document.createElement("button");
   b.innerHTML = `${m.label}<small>${m.iso.slice(0, 10)}</small>`;
@@ -237,10 +227,13 @@ MOMENTS.forEach((m) => {
     sim.paused = false;
     sim.direction = 1;
     if (m.eclipse) {
-      if (!world.state.trueScale) world.setTrueScale(true);
+      if (!world.state.trueScale) {
+        restoreTrueScale = false;
+        world.setTrueScale(true);
+      }
       focusOn(m.focus || "Earth", { eclipse: true });
     } else {
-      focusOn(m.focus);
+      focusOn(m.focus || "Overview");
     }
     closeMenus();
   });
@@ -260,14 +253,11 @@ function cycleQuality() {
   const at = tiers.indexOf(world.state.textureQuality);
   const next = tiers[(at + 1) % tiers.length];
   world.setTextureQuality(next);
-  try {
-    localStorage.setItem("cosmos_tex", next);
-  } catch {
-    return;
-  }
+  writeStore("cosmos_tex", next);
 }
 
 function toggleSizes() {
+  restoreTrueScale = null;
   world.setTrueScale(!world.state.trueScale);
 }
 
@@ -359,7 +349,9 @@ $("btn-help").addEventListener("click", () => {
   closeMenus();
   toggleHelp(true);
 });
-helpEl.addEventListener("click", () => toggleHelp(false));
+helpEl.addEventListener("click", (e) => {
+  if (e.target === helpEl) toggleHelp(false);
+});
 
 const navButtons = {};
 const navAU = {};
@@ -432,13 +424,13 @@ function renderPlate(id) {
   const rows = [];
   if (id !== "Sun") rows.push(row("Distance from Sun", "", { id: "live-sun" }));
   rows.push(row("Mean radius", `${fmtNum(d.radiusKm, 5)} km`));
-  rows.push(row("Surface gravity", `${d.gravity.toFixed(1)} m/s<sup>2</sup>`));
+  rows.push(row("Surface gravity", `${formatGravity(d.gravity)} m/s<sup>2</sup>`));
   rows.push(row("Rotation", `${fmtNum(Math.abs(d.rotationHours))} h${d.rotationHours < 0 ? " retrograde" : ""}`));
   rows.push(row("Temperature", d.tempLabel));
   if (d.moons !== null && d.moons !== undefined) rows.push(row("Known moons", String(d.moons)));
 
   if (id !== "Sun" && id !== "Earth") rows.push(row("Distance from Earth", "", { id: "live-earth", extra: true }));
-  rows.push(row("Mass", `${fmtNum(d.massE24)} x 10<sup>24</sup> kg`, { extra: true }));
+  rows.push(row("Mass", formatMass(d.massE24), { extra: true }));
   rows.push(row("Density", `${fmtNum(d.densityKgM3)} kg/m<sup>3</sup>`, { extra: true }));
   if (d.escapeKmS) rows.push(row("Escape velocity", `${d.escapeKmS} km/s`, { extra: true }));
   rows.push(row("Axial tilt", `${d.tiltDeg} deg`, { extra: true }));
@@ -490,6 +482,10 @@ function renderSource(id) {
 
 function focusOn(id, options = {}) {
   if (!has(VIEWS, id) && !has(world.bodies, id)) return;
+  if (!options.eclipse && restoreTrueScale !== null) {
+    world.setTrueScale(restoreTrueScale);
+    restoreTrueScale = null;
+  }
   world.setFocus(id, options);
   Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
   renderPlate(id);
@@ -531,10 +527,10 @@ function updateLive() {
 
   let note = "";
   if (id === "Earth") {
-    const s = nextSolarEclipse(sim.ms);
+    const s = nextSolarEclipse(sim.ms - 3 * 3600000);
     if (s && Math.abs(s.ms - sim.ms) < 3 * 3600000) note = `${s.kind} solar eclipse.`;
   } else if (id === "Moon") {
-    const l = nextLunarEclipse(sim.ms);
+    const l = nextLunarEclipse(sim.ms - 3 * 3600000);
     if (l && Math.abs(l.ms - sim.ms) < 3 * 3600000) note = `${l.kind} lunar eclipse.`;
   }
   setText($("plate-light"), note ? `${lightText} ${note}` : lightText);
@@ -567,8 +563,8 @@ function renderAlmanac() {
   if (a.moonPhase) rows.push(["Moon", `${a.moonPhase}, ${Math.round(a.moonLit * 100)}%`]);
   if (a.nextSolar) rows.push(["Solar", `${a.nextSolar.kind}, ${a.nextSolar.date}`]);
   if (a.nextLunar) rows.push(["Lunar", `${a.nextLunar.kind}, ${a.nextLunar.date}`]);
-  const events = [a.nextQuarter, a.nextSeason].filter(Boolean).sort((x, y) => x.ms - y.ms);
-  if (events.length) rows.push(["Next", `${events[0].name}, ${events[0].date}`]);
+  if (a.nextQuarter) rows.push(["Phase", `${a.nextQuarter.name}, ${a.nextQuarter.date}`]);
+  if (a.nextSeason) rows.push(["Season", `${a.nextSeason.name}, ${a.nextSeason.date}`]);
   setHTML($("almanac"), rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
 }
 
@@ -646,29 +642,35 @@ window.addEventListener("keyup", (e) => {
   if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON") e.preventDefault();
 });
 
-function readHash() {
+function readHash(fromChange = false) {
   const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f));
   if (h.ms !== null) sim.ms = h.ms;
+  else if (fromChange) sim.ms = Date.now();
   if (h.scale !== null) sim.scale = h.scale;
+  sim.paused = h.paused;
+  sim.direction = h.reverse ? -1 : 1;
   return h.focus;
 }
 
 let lastHash = "";
 function writeHash() {
-  const h = buildHash(world.state.focus, sim.scale, sim.ms, Date.now());
+  const h = buildHash(world.state.focus, sim.scale, sim.ms, Date.now(), {
+    paused: sim.paused,
+    reverse: sim.direction < 0,
+  });
   if (h !== lastHash) {
     lastHash = h;
     try {
       history.replaceState(null, "", `#${h}`);
     } catch {
-      return;
+      lastHash = "";
     }
   }
 }
 
 window.addEventListener("hashchange", () => {
   if (location.hash.replace(/^#/, "") === lastHash) return;
-  const focus = readHash();
+  const focus = readHash(true);
   setScale(sim.scale);
   focusOn(focus || "Overview");
 });
@@ -703,6 +705,7 @@ let slowTick = 0;
 let hashTick = 0;
 let clockTick = 0;
 let liveBefore = false;
+let lastStepMs = null;
 
 function step(now) {
   const rawDt = (now - last) / 1000;
@@ -710,9 +713,9 @@ function step(now) {
   last = now;
   if (rawDt > 0) fpsAvg += (1 / rawDt - fpsAvg) * 0.05;
 
-  const stepDt = liveBefore ? Math.min(rawDt, 3600) : dt;
+  const tracking = liveBefore && sim.ms === lastStepMs && !sim.paused && sim.direction > 0 && sim.scale < 1.05;
   if (!sim.paused) {
-    const next = sim.ms + sim.direction * sim.scale * stepDt * 1000;
+    const next = tracking ? Date.now() : sim.ms + sim.direction * sim.scale * dt * 1000;
     const wrapped = clampMs(next);
     if (wrapped !== next && pulseActive) {
       world.stopPulse();
@@ -722,6 +725,7 @@ function step(now) {
     sim.ms = wrapped;
   }
   liveBefore = isLive();
+  lastStepMs = sim.ms;
 
   const out = world.update(sim.ms, sim.paused ? 0 : sim.scale, now);
   out.arrivals.forEach((a) => {

@@ -2,11 +2,28 @@ import * as THREE from "three";
 import { parseManifest, resolveFiles, surfaceKey, centerLonOffset, MASK_SLOTS } from "./texmanifest.js";
 
 const channel = typeof window !== "undefined" && typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
+const waiters = [];
+
+function holdPort(on) {
+  const port = channel.port1;
+  const fn = on ? port.ref : port.unref;
+  if (typeof fn === "function") fn.call(port);
+}
+
+if (channel) {
+  channel.port1.onmessage = () => {
+    const resolve = waiters.shift();
+    if (resolve) resolve();
+    if (!waiters.length) holdPort(false);
+  };
+  holdPort(false);
+}
 
 export const tick = () =>
   channel
     ? new Promise((r) => {
-        channel.port1.onmessage = () => r();
+        waiters.push(r);
+        holdPort(true);
         channel.port2.postMessage(0);
       })
     : new Promise((r) => setTimeout(r, 0));
@@ -201,7 +218,6 @@ function craters(canvas, rand, count, strength, maxR) {
 }
 
 async function earthMaps() {
-  // ...unchanged from the original repo...
   const SEA = 0.56;
   const rand = mulberry(hashSeed("Earth"));
   const land = layers(rand, [4, 8, 16, 32, 64, 128, 256]);
@@ -267,7 +283,6 @@ async function earthMaps() {
 }
 
 async function jupiterMap(body) {
-  // ...unchanged from the original repo...
   const rand = mulberry(hashSeed(body.id));
   const turb = layers(rand, [4, 8, 16, 32]);
   const fine = layers(rand, [16, 48, 96, 192]);
@@ -294,7 +309,6 @@ async function jupiterMap(body) {
 }
 
 async function saturnMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const turb = layers(rand, [4, 8, 16]);
   const fine = layers(rand, [16, 48, 96]);
@@ -312,7 +326,6 @@ async function saturnMap(body) {
 }
 
 async function venusMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const st = layers(rand, [3, 6, 12, 24]);
   const sw = layers(rand, [8, 24, 64]);
@@ -327,7 +340,6 @@ async function venusMap(body) {
 }
 
 async function iceGiantMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const st = layers(rand, [4, 8, 16]);
   const sw = layers(rand, [16, 48, 96]);
@@ -352,7 +364,6 @@ async function iceGiantMap(body) {
 }
 
 async function marsMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const alb = layers(rand, [3, 6, 12]);
@@ -375,7 +386,6 @@ async function marsMap(body) {
 }
 
 async function moonMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const mare = layers(rand, [3, 5, 9]);
@@ -393,7 +403,6 @@ async function moonMap(body) {
 }
 
 async function mercuryMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64, 128]);
   const pal = body.palette.map(hexToRgb);
@@ -406,7 +415,6 @@ async function mercuryMap(body) {
 }
 
 async function plutoMap(body) {
-  // ...unchanged...
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64]);
   const pal = body.palette.map(hexToRgb);
@@ -424,9 +432,6 @@ async function plutoMap(body) {
   craters(c, rand, 60, 0.5, 24);
   return { map: toTexture(c), bump: toTexture(heightCanvas(c), false) };
 }
-
-// NEW: generic cratered moon surface for Phobos, Deimos, Io, Europa,
-// Ganymede, Callisto, Titan, Triton. Not a photograph.
 async function genericMoonMap(body) {
   const rand = mulberry(hashSeed(body.id));
   const ns = layers(rand, [4, 8, 16, 32, 64]);
@@ -547,14 +552,19 @@ export function disposeMaps(maps) {
   for (const tex of Object.values(maps)) if (tex && tex.dispose) tex.dispose();
 }
 
-export async function loadSurface(entry, wanted) {
+export async function loadSurface(entry, wanted, have = null) {
   const picks = resolveFiles(entry, wanted);
   if (!picks.map) return null;
   const loader = new THREE.TextureLoader();
   const offset = centerLonOffset(entry.centerLon);
   const maps = {};
+  const files = {};
   await Promise.all(
     Object.entries(picks).map(async ([slot, pick]) => {
+      if (have && have[slot] === pick.file) {
+        files[slot] = pick.file;
+        return;
+      }
       try {
         const tex = await loader.loadAsync(`textures/${pick.file}`);
         tex.colorSpace = MASK_SLOTS.includes(slot) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
@@ -564,14 +574,15 @@ export async function loadSurface(entry, wanted) {
           tex.offset.x = offset;
         }
         maps[slot] = tex;
+        files[slot] = pick.file;
       } catch {
         return;
       }
     })
   );
-  if (!maps.map) {
+  if (!files.map) {
     disposeMaps(maps);
     return null;
   }
-  return { maps, tier: picks.map.tier, key: surfaceKey(entry, wanted) };
+  return { maps, files, tier: picks.map.tier, key: surfaceKey(entry, wanted) };
 }

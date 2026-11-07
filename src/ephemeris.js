@@ -1,7 +1,7 @@
 import * as Astronomy from "astronomy-engine";
 import { toThree, poleVector } from "./frame.js";
 import { MIN_MS, MAX_MS, clampMs } from "./timeutil.js";
-import { MOONS, AU_KM, POLES } from "./data.js";
+import { MOONS, POLES } from "./data.js";
 
 export { MIN_MS, MAX_MS, clampMs, poleVector };
 
@@ -26,18 +26,20 @@ export function helioPosition(bodyId, ms) {
   return toThree(Astronomy.HelioVector(Astronomy.Body[bodyId], new Date(ms)));
 }
 
-let jupiterCache = { ms: null, info: null };
+const JUPITER_CACHE_SIZE = 8;
+const jupiterCache = new Map();
 function jupiterMoonsInfo(ms) {
-  if (jupiterCache.ms !== ms) {
-    jupiterCache.ms = ms;
-    jupiterCache.info = Astronomy.JupiterMoons(new Date(ms));
+  let info = jupiterCache.get(ms);
+  if (!info) {
+    info = Astronomy.JupiterMoons(new Date(ms));
+    if (jupiterCache.size >= JUPITER_CACHE_SIZE) jupiterCache.delete(jupiterCache.keys().next().value);
+    jupiterCache.set(ms, info);
   }
-  return jupiterCache.info;
+  return info;
 }
 
 function keplerianOffset(moon, ms) {
   const pole = poleVector(...POLES[moon.parent]);
-  // reference x-axis: intersection of parent-equator with J2000-equator
   let rx = -pole[2];
   let ry = 0;
   let rz = pole[0];
@@ -62,9 +64,6 @@ function keplerianOffset(moon, ms) {
   const s = Math.sin(M);
   return [a * (c * rx + s * yx), a * (c * ry + s * yy), a * (c * rz + s * yz)];
 }
-
-// True AU offset from the parent, in the scene frame.
-// JupiterMoons vectors are J2000-equatorial, relative to Jupiter's centre.
 export function moonOffset(id, ms) {
   const moon = MOON_BY_ID[id];
   if (!moon) return [0, 0, 0];
@@ -73,8 +72,14 @@ export function moonOffset(id, ms) {
   return keplerianOffset(moon, ms);
 }
 
-export function gmstRad(ms) {
-  return (Astronomy.SiderealTime(new Date(ms)) * 15 * Math.PI) / 180;
+export function greenwichRaRad(ms) {
+  const time = Astronomy.MakeTime(new Date(ms));
+  const theta = (Astronomy.SiderealTime(time) * 15 * Math.PI) / 180;
+  const v = Astronomy.RotateVector(
+    Astronomy.Rotation_EQD_EQJ(time),
+    new Astronomy.Vector(Math.cos(theta), Math.sin(theta), 0, time)
+  );
+  return Math.atan2(v.y, v.x);
 }
 
 export function orbitalPeriodDays(bodyId) {

@@ -1,782 +1,536 @@
-import { PLANETS, SUN, MOONS, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
-import { clampMs, distanceAU, separationAU, moonOffset } from "./ephemeris.js";
-import { inputDate, parseInputDate } from "./dates.js";
-import { parseHash, buildHash, SCALE_MIN, SCALE_MAX } from "./hash.js";
-import { createWorld, VIEWS } from "./world.js";
-import { almanac } from "./almanac.js";
-import { createRuler } from "./ruler.js";
-import { createDispatch } from "./dispatch.js";
-import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, createClock } from "./format.js";
-import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
+export const AU_KM = 149597870.7;
+export const C_KM_S = 299792.458;
+export const C_AU_S = C_KM_S / AU_KM;
 
-const $ = (id) => document.getElementById(id);
-
-const ICON = {
-  play: '<svg viewBox="0 0 14 14"><path d="M3 1.5v11l9-5.5z"/></svg>',
-  pause: '<svg viewBox="0 0 14 14"><path d="M3 1.5h3v11H3zM8 1.5h3v11H8z"/></svg>',
-  reverse: '<svg viewBox="0 0 14 14"><path d="M11 1.5v11L2 7z"/></svg>',
+export const SOURCE_FACTS = {
+  name: "NASA NSSDC Planetary Fact Sheet",
+  url: "https://nssdc.gsfc.nasa.gov/planetary/factsheet/",
+  version: "18 Mar 2025",
 };
 
-const PRESETS = [
-  ["Real", 1],
-  ["Min", 60],
-  ["Hour", 3600],
-  ["Day", 86400],
-  ["Week", 604800],
-  ["Month", 2629800],
-  ["Year", 31557600],
-  ["Decade", 315576000],
-];
-
-const SLIDER_MAX = 1000;
-
-const ALL = {
-  Sun: SUN,
-  ...Object.fromEntries(PLANETS.map((p) => [p.id, p])),
-  ...Object.fromEntries(MOONS.map((m) => [m.id, m])),
+export const SOURCE_POSITIONS = {
+  name: "astronomy-engine",
+  url: "https://github.com/cosinekitty/astronomy",
 };
 
-const has = (o, k) => Object.hasOwn(o, k);
+export const SUN = {
+  id: "Sun",
+  W0: 84.176,
+  Wdot: 14.1844,
+  name: "Sun",
+  type: "G-type main-sequence star",
+  radiusKm: 695700,
+  massE24: 1988400,
+  gravity: 274.0,
+  rotationHours: 609.12,
+  tiltDeg: 7.25,
+  tempLabel: "5772 K (effective)",
+  densityKgM3: 1408,
+  escapeKmS: 617.6,
+  inclinationDeg: null,
+  eccentricity: null,
+  ringSystem: null,
+  moons: null,
+  semiMajorMKm: null,
+  facts: "Holds about 99.86 percent of the mass of the solar system.",
+};
 
-const sim = { ms: Date.now(), scale: 3600, direction: 1, paused: false, tz: "local" };
-
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-
-try {
-  const saved = localStorage.getItem("cosmos_tz");
-  if (saved === "utc" || saved === "local") sim.tz = saved;
-} catch {
-  sim.tz = "local";
-}
-
-let world;
-try {
-  world = createWorld($("stage"), $("labels"), {
-    onSelect: (id) => focusOn(id),
-    onProgress: (done, total, id) => {
-      const line = $("intro-line");
-      const fill = $("intro-fill");
-      if (!line || !fill) return;
-      line.textContent = `Painting ${id}`;
-      fill.style.width = `${(done / total) * 100}%`;
+export const PLANETS = [
+  {
+    id: "Mercury",
+    W0: 329.5988,
+    Wdot: 6.1385108,
+    name: "Mercury",
+    type: "Terrestrial planet",
+    radiusKm: 2439.7,
+    massE24: 0.33,
+    gravity: 3.7,
+    escapeKmS: 4.3,
+    rotationHours: 1407.6,
+    semiMajorMKm: 57.9,
+    inclinationDeg: 7.0,
+    eccentricity: 0.206,
+    moons: 0,
+    ringSystem: false,
+    tempLabel: "167 C",
+    tiltDeg: 0.034,
+    densityKgM3: 5429,
+    facts: "A solar day on Mercury lasts two Mercury years. It spins exactly three times for every two laps of the Sun.",
+    palette: ["#8c8680", "#6f6a64", "#a29b92", "#585450"],
+    kind: "rock",
+  },
+  {
+    id: "Venus",
+    W0: 160.2,
+    Wdot: -1.4813688,
+    name: "Venus",
+    type: "Terrestrial planet",
+    radiusKm: 6051.8,
+    massE24: 4.87,
+    gravity: 8.9,
+    escapeKmS: 10.4,
+    rotationHours: -5832.5,
+    semiMajorMKm: 108.2,
+    inclinationDeg: 3.4,
+    eccentricity: 0.007,
+    moons: 0,
+    ringSystem: false,
+    tempLabel: "464 C",
+    tiltDeg: 177.4,
+    densityKgM3: 5243,
+    facts: "Spins backwards, and one rotation takes longer than its year.",
+    spinSign: -1,
+    palette: ["#e8cf9a", "#d9b878", "#f0dcae", "#c9a560"],
+    kind: "cloud",
+    atmosphere: { color: [1.0, 0.8, 0.45], power: 2.4, intensity: 1.1 },
+  },
+  {
+    id: "Earth",
+    name: "Earth",
+    type: "Terrestrial planet",
+    radiusKm: 6371.0,
+    massE24: 5.97,
+    gravity: 9.8,
+    escapeKmS: 11.2,
+    rotationHours: 23.9345,
+    semiMajorMKm: 149.6,
+    inclinationDeg: 0.0,
+    eccentricity: 0.017,
+    moons: 1,
+    ringSystem: false,
+    tempLabel: "15 C",
+    tiltDeg: 23.44,
+    densityKgM3: 5514,
+    facts: "The only known world with liquid surface water and life.",
+    palette: ["#1d4f91", "#2f7d46", "#e8e8ea", "#a58a52"],
+    kind: "earth",
+    atmosphere: { color: [0.35, 0.6, 1.0], power: 3.0, intensity: 1.6 },
+  },
+  {
+    id: "Mars",
+    W0: 176.63,
+    Wdot: 350.89198226,
+    name: "Mars",
+    type: "Terrestrial planet",
+    radiusKm: 3389.5,
+    massE24: 0.642,
+    gravity: 3.7,
+    escapeKmS: 5.0,
+    rotationHours: 24.6229,
+    semiMajorMKm: 228.0,
+    inclinationDeg: 1.8,
+    eccentricity: 0.094,
+    moons: 2,
+    ringSystem: false,
+    tempLabel: "-65 C",
+    tiltDeg: 25.19,
+    densityKgM3: 3934,
+    facts: "Home to Olympus Mons, the tallest known volcano in the solar system.",
+    palette: ["#b5532e", "#8e3d20", "#d07a4c", "#e9e2da"],
+    kind: "mars",
+    atmosphere: { color: [0.9, 0.55, 0.4], power: 4.0, intensity: 0.5 },
+  },
+  {
+    id: "Jupiter",
+    W0: 284.95,
+    Wdot: 870.536642,
+    name: "Jupiter",
+    type: "Gas giant",
+    radiusKm: 69911,
+    massE24: 1898,
+    gravity: 23.1,
+    escapeKmS: 59.5,
+    rotationHours: 9.925,
+    semiMajorMKm: 778.5,
+    inclinationDeg: 1.3,
+    eccentricity: 0.049,
+    moons: 95,
+    ringSystem: true,
+    tempLabel: "-110 C (1 bar)",
+    tiltDeg: 3.13,
+    densityKgM3: 1326,
+    facts: "More than twice the mass of all the other planets combined.",
+    palette: ["#c9a37a", "#e8d5b5", "#9c6b45", "#d9b894", "#7a4e33"],
+    kind: "jupiter",
+    atmosphere: { color: [0.9, 0.75, 0.55], power: 3.5, intensity: 0.7 },
+  },
+  {
+    id: "Saturn",
+    W0: 38.9,
+    Wdot: 810.7939024,
+    name: "Saturn",
+    type: "Gas giant",
+    radiusKm: 58232,
+    massE24: 568,
+    gravity: 9.0,
+    escapeKmS: 35.5,
+    rotationHours: 10.656,
+    semiMajorMKm: 1432.0,
+    inclinationDeg: 2.5,
+    eccentricity: 0.052,
+    moons: 274,
+    ringSystem: true,
+    tempLabel: "-140 C (1 bar)",
+    tiltDeg: 26.73,
+    densityKgM3: 687,
+    facts: "The least dense planet. It would float in a large enough bathtub.",
+    palette: ["#e3cfa0", "#cfb887", "#efe0b8", "#b89f6e"],
+    kind: "saturn",
+    rings: {
+      innerKm: 74658,
+      outerKm: 136780,
+      bands: [
+        { name: "C", fromKm: 74658, toKm: 91975 },
+        { name: "B", fromKm: 91975, toKm: 117507 },
+        { name: "Cassini", fromKm: 117507, toKm: 122340 },
+        { name: "A", fromKm: 122340, toKm: 136780 },
+      ],
+      gaps: [{ name: "Encke", fromKm: 133410, toKm: 133735 }],
     },
-  });
-} catch (err) {
-  if (window.cosmosFatal) {
-    window.cosmosFatal(
-      "Cosmos could not start the 3D view. Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration enabled.",
-      err && err.message
-    );
-  }
-  throw err;
-}
-
-const ruler = createRuler({
-  root: $("ruler"),
-  track: $("ruler-track"),
-  fill: $("ruler-fill"),
-  time: $("ruler-time"),
-  scale: $("ruler-scale"),
-  last: $("ruler-last"),
-});
-
-createDispatch({
-  body: $("dispatch-body"),
-  badge: $("dispatch-badge"),
-  key: $("api-key"),
-  save: $("api-save"),
-  toggle: $("dispatch-toggle"),
-  panel: $("dispatch"),
-});
-
-try {
-  const savedTex = localStorage.getItem("cosmos_tex");
-  if (savedTex) world.setTextureQuality(savedTex);
-} catch {
-  world.setTextureQuality("2k");
-}
-
-const clock = createClock();
-const textCache = new Map();
-
-function setText(el, text) {
-  if (textCache.get(el) === text) return;
-  textCache.set(el, text);
-  el.textContent = text;
-}
-
-function setHTML(el, html) {
-  if (textCache.get(el) === html) return;
-  textCache.set(el, html);
-  el.innerHTML = html;
-}
-
-function sliderToScale(v) {
-  return SCALE_MIN * Math.pow(SCALE_MAX / SCALE_MIN, v / SLIDER_MAX);
-}
-
-function scaleToSlider(s) {
-  return (Math.log(s / SCALE_MIN) / Math.log(SCALE_MAX / SCALE_MIN)) * SLIDER_MAX;
-}
-
-function setScale(s) {
-  sim.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
-  $("scale").value = String(Math.round(scaleToSlider(sim.scale)));
-}
-
-function nearestPreset(scale) {
-  let best = 0;
-  let bestD = Infinity;
-  PRESETS.forEach(([, s], i) => {
-    const d = Math.abs(Math.log(scale / s));
-    if (d < bestD) {
-      bestD = d;
-      best = i;
-    }
-  });
-  return best;
-}
-
-function stepScale(dir) {
-  if (dir > 0) {
-    const next = PRESETS.find(([, s]) => s > sim.scale * 1.02);
-    if (next) setScale(next[1]);
-    return;
-  }
-  const lower = PRESETS.filter(([, s]) => s < sim.scale / 1.02);
-  if (lower.length) setScale(lower[lower.length - 1][1]);
-}
-
-const presetButtons = PRESETS.map(([label, s]) => {
-  const b = document.createElement("button");
-  b.textContent = label;
-  b.addEventListener("click", () => setScale(s));
-  $("presets").appendChild(b);
-  return b;
-});
-
-$("scale").addEventListener("input", (e) => {
-  sim.scale = sliderToScale(parseFloat(e.target.value));
-});
-
-function togglePause() {
-  sim.paused = !sim.paused;
-}
-
-function toggleReverse() {
-  sim.direction *= -1;
-}
-
-function jumpNow() {
-  sim.ms = Date.now();
-}
-
-$("btn-reverse").innerHTML = ICON.reverse;
-$("btn-play").addEventListener("click", togglePause);
-$("btn-reverse").addEventListener("click", toggleReverse);
-$("btn-now").addEventListener("click", jumpNow);
-$("wordmark").addEventListener("click", () => focusOn("Overview"));
-
-$("clock").addEventListener("click", () => {
-  sim.tz = sim.tz === "local" ? "utc" : "local";
-  try {
-    localStorage.setItem("cosmos_tz", sim.tz);
-  } catch {
-    return;
-  } finally {
-    renderClock();
-  }
-});
-
-$("date-input").addEventListener("change", (e) => {
-  const ms = parseInputDate(e.target.value, sim.tz);
-  if (Number.isFinite(ms)) sim.ms = ms;
-});
-
-const menus = [
-  { btn: $("btn-jump"), pop: $("jump") },
-  { btn: $("btn-view"), pop: $("view") },
+    atmosphere: { color: [0.95, 0.85, 0.6], power: 3.5, intensity: 0.6 },
+  },
+  {
+    id: "Uranus",
+    W0: 203.81,
+    Wdot: -501.1600928,
+    name: "Uranus",
+    type: "Ice giant",
+    radiusKm: 25362,
+    massE24: 86.8,
+    gravity: 8.7,
+    escapeKmS: 21.3,
+    rotationHours: -17.24,
+    semiMajorMKm: 2867.0,
+    inclinationDeg: 0.8,
+    eccentricity: 0.047,
+    moons: 28,
+    ringSystem: true,
+    tempLabel: "-195 C (1 bar)",
+    tiltDeg: 97.77,
+    densityKgM3: 1270,
+    facts: "Rolls around the Sun tipped on its side, with an axial tilt of nearly 98 degrees.",
+    spinSign: -1,
+    palette: ["#9fd8de", "#8cc9d1", "#b4e3e8"],
+    kind: "smooth",
+    atmosphere: { color: [0.55, 0.9, 0.95], power: 2.8, intensity: 1.0 },
+  },
+  {
+    id: "Neptune",
+    W0: 249.978,
+    Wdot: 541.1397757,
+    name: "Neptune",
+    type: "Ice giant",
+    radiusKm: 24622,
+    massE24: 102,
+    gravity: 11.0,
+    escapeKmS: 23.5,
+    rotationHours: 16.11,
+    semiMajorMKm: 4515.0,
+    inclinationDeg: 1.8,
+    eccentricity: 0.01,
+    moons: 16,
+    ringSystem: true,
+    tempLabel: "-200 C (1 bar)",
+    tiltDeg: 28.32,
+    densityKgM3: 1638,
+    facts: "The windiest world in the solar system, with winds of about 2,000 km/h.",
+    palette: ["#2f4fb5", "#3a63d0", "#243f95"],
+    kind: "smooth",
+    atmosphere: { color: [0.3, 0.45, 1.0], power: 2.8, intensity: 1.2 },
+  },
+  {
+    id: "Pluto",
+    W0: 302.695,
+    Wdot: 56.3625225,
+    name: "Pluto",
+    type: "Dwarf planet",
+    radiusKm: 1188,
+    massE24: 0.013,
+    gravity: 0.7,
+    escapeKmS: 1.3,
+    rotationHours: -153.3,
+    semiMajorMKm: 5906.4,
+    inclinationDeg: 17.2,
+    eccentricity: 0.244,
+    moons: 5,
+    ringSystem: false,
+    tempLabel: "-225 C",
+    tiltDeg: 119.5,
+    densityKgM3: 1850,
+    facts: "New Horizons imaged its heart-shaped nitrogen ice plain in 2015.",
+    palette: ["#b59a84", "#8a7260", "#e0d2c3", "#5e4c40"],
+    kind: "pluto",
+  },
 ];
 
-function closeMenus() {
-  menus.forEach((m) => {
-    m.pop.hidden = true;
-    m.btn.setAttribute("aria-expanded", "false");
-  });
-}
+export const MOONS = [
+  {
+    id: "Moon",
+    name: "Moon",
+    parent: "Earth",
+    source: "ephemeris",
+    type: "Natural satellite of Earth",
+    radiusKm: 1737.4,
+    massE24: 0.073,
+    gravity: 1.6,
+    escapeKmS: 2.4,
+    rotationHours: 655.7,
+    semiMajorKm: 384400,
+    semiMajorAU: 384400 / AU_KM,
+    periodDays: 27.3217,
+    inclinationDeg: 5.1,
+    eccentricity: 0.055,
+    tempLabel: "-20 C",
+    tiltDeg: 6.7,
+    densityKgM3: 3340,
+    facts: "Tidally locked to Earth, and drifting away about 3.8 cm each year.",
+    palette: ["#9a9a9a", "#777777", "#b8b8b8", "#5a5a5a"],
+    kind: "moon",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Phobos",
+    name: "Phobos",
+    parent: "Mars",
+    source: "keplerian",
+    type: "Natural satellite of Mars",
+    radiusKm: 11.08,
+    massE24: 1.06e-8,
+    gravity: 0.0057,
+    escapeKmS: 0.0113,
+    rotationHours: 7.653,
+    semiMajorKm: 9376,
+    semiMajorAU: 9376 / AU_KM,
+    periodDays: 0.31891,
+    phaseDeg: 0,
+    inclinationDeg: 1.08,
+    eccentricity: 0.0151,
+    tempLabel: "-40 C",
+    tiltDeg: 0,
+    densityKgM3: 1876,
+    facts: "Orbits Mars faster than Mars rotates, rising in the west and setting in the east. Its orbit is slowly decaying.",
+    palette: ["#7a6a5c", "#5a4c40", "#8c7c6c"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Deimos",
+    name: "Deimos",
+    parent: "Mars",
+    source: "keplerian",
+    type: "Natural satellite of Mars",
+    radiusKm: 6.2,
+    massE24: 1.4762e-9,
+    gravity: 0.003,
+    escapeKmS: 0.0056,
+    rotationHours: 30.31,
+    semiMajorKm: 23463,
+    semiMajorAU: 23463 / AU_KM,
+    periodDays: 1.263,
+    phaseDeg: 180,
+    inclinationDeg: 1.79,
+    eccentricity: 0.0002,
+    tempLabel: "-40 C",
+    tiltDeg: 0,
+    densityKgM3: 1479,
+    facts: "The smaller and outer of Mars's two moons, likely a captured asteroid.",
+    palette: ["#7a6a5c", "#5a4c40", "#8c7c6c"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Io",
+    name: "Io",
+    parent: "Jupiter",
+    source: "jupiter-moons",
+    jupiterKey: "io",
+    type: "Natural satellite of Jupiter",
+    radiusKm: 1821.6,
+    massE24: 0.08932,
+    gravity: 1.796,
+    escapeKmS: 2.558,
+    rotationHours: 42.46,
+    semiMajorKm: 421700,
+    semiMajorAU: 421700 / AU_KM,
+    periodDays: 1.769,
+    inclinationDeg: 0.05,
+    eccentricity: 0.0041,
+    tempLabel: "-163 C",
+    tiltDeg: 0,
+    densityKgM3: 3528,
+    facts: "The most volcanically active body in the solar system, squeezed by Jupiter's tides.",
+    palette: ["#e8d45a", "#c9a12e", "#f0e08a", "#8a6a1e"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Europa",
+    name: "Europa",
+    parent: "Jupiter",
+    source: "jupiter-moons",
+    jupiterKey: "europa",
+    type: "Natural satellite of Jupiter",
+    radiusKm: 1560.8,
+    massE24: 0.048,
+    gravity: 1.314,
+    escapeKmS: 2.025,
+    rotationHours: 85.23,
+    semiMajorKm: 671034,
+    semiMajorAU: 671034 / AU_KM,
+    periodDays: 3.551,
+    inclinationDeg: 0.47,
+    eccentricity: 0.009,
+    tempLabel: "-160 C",
+    tiltDeg: 0,
+    densityKgM3: 3013,
+    facts: "A cracked ice shell likely hides a global saltwater ocean.",
+    palette: ["#e8e0d0", "#c9c0b0", "#f0e8d8", "#a09888"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Ganymede",
+    name: "Ganymede",
+    parent: "Jupiter",
+    source: "jupiter-moons",
+    jupiterKey: "ganymede",
+    type: "Natural satellite of Jupiter",
+    radiusKm: 2634.1,
+    massE24: 0.148,
+    gravity: 1.428,
+    escapeKmS: 2.741,
+    rotationHours: 171.71,
+    semiMajorKm: 1070412,
+    semiMajorAU: 1070412 / AU_KM,
+    periodDays: 7.155,
+    inclinationDeg: 0.2,
+    eccentricity: 0.001,
+    tempLabel: "-163 C",
+    tiltDeg: 0,
+    densityKgM3: 1936,
+    facts: "The largest moon in the solar system, bigger than Mercury, and the only moon known to have its own magnetic field.",
+    palette: ["#b0a89a", "#8c8478", "#c8c0b0", "#5c5448"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Callisto",
+    name: "Callisto",
+    parent: "Jupiter",
+    source: "jupiter-moons",
+    jupiterKey: "callisto",
+    type: "Natural satellite of Jupiter",
+    radiusKm: 2410.3,
+    massE24: 0.108,
+    gravity: 1.235,
+    escapeKmS: 2.440,
+    rotationHours: 400.54,
+    semiMajorKm: 1882709,
+    semiMajorAU: 1882709 / AU_KM,
+    periodDays: 16.689,
+    inclinationDeg: 0.19,
+    eccentricity: 0.007,
+    tempLabel: "-139 C",
+    tiltDeg: 0,
+    densityKgM3: 1834,
+    facts: "The most heavily cratered body in the solar system, an old and stable surface.",
+    palette: ["#6c6458", "#4a4438", "#8c8478", "#3a3428"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Titan",
+    name: "Titan",
+    parent: "Saturn",
+    source: "keplerian",
+    type: "Natural satellite of Saturn",
+    radiusKm: 2574.7,
+    massE24: 0.1345,
+    gravity: 1.352,
+    escapeKmS: 2.639,
+    rotationHours: 382.68,
+    semiMajorKm: 1221870,
+    semiMajorAU: 1221870 / AU_KM,
+    periodDays: 15.945,
+    phaseDeg: 0,
+    inclinationDeg: 0.35,
+    eccentricity: 0.029,
+    tempLabel: "-179 C",
+    tiltDeg: 0,
+    densityKgM3: 1881,
+    facts: "The only moon with a thick atmosphere, and the only body other than Earth with liquid on its surface.",
+    palette: ["#e0b060", "#c09040", "#f0c880", "#806020"],
+    kind: "moon-generic",
+    atmosphere: { color: [1.0, 0.7, 0.4], power: 2.8, intensity: 1.2 },
+    moons: null,
+    ringSystem: null,
+  },
+  {
+    id: "Triton",
+    name: "Triton",
+    parent: "Neptune",
+    source: "keplerian",
+    type: "Natural satellite of Neptune",
+    radiusKm: 1353.4,
+    massE24: 0.021,
+    gravity: 0.779,
+    escapeKmS: 1.455,
+    rotationHours: -141.04,
+    semiMajorKm: 354759,
+    semiMajorAU: 354759 / AU_KM,
+    periodDays: -5.877,
+    phaseDeg: 0,
+    inclinationDeg: 156.9,
+    eccentricity: 0.000016,
+    tempLabel: "-235 C",
+    tiltDeg: 0,
+    densityKgM3: 2061,
+    spinSign: -1,
+    facts: "Orbits Neptune backwards, a likely captured Kuiper Belt object. It has nitrogen geysers.",
+    palette: ["#e8c8d0", "#c8a8b0", "#f8e8e8", "#a08088"],
+    kind: "moon-generic",
+    moons: null,
+    ringSystem: null,
+  },
+];
 
-function menusOpen() {
-  return menus.some((m) => !m.pop.hidden);
-}
-
-menus.forEach((m) => {
-  m.btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const open = m.pop.hidden;
-    closeMenus();
-    m.pop.hidden = !open;
-    m.btn.setAttribute("aria-expanded", String(!m.pop.hidden));
-  });
-});
-
-document.addEventListener("click", (e) => {
-  menus.forEach((m) => {
-    if (!m.pop.hidden && !m.pop.contains(e.target)) {
-      m.pop.hidden = true;
-      m.btn.setAttribute("aria-expanded", "false");
-    }
-  });
-});
-
-MOMENTS.forEach((m) => {
-  const b = document.createElement("button");
-  b.innerHTML = `${m.label}<small>${m.iso.slice(0, 10)}</small>`;
-  b.addEventListener("click", () => {
-    sim.ms = clampMs(Date.parse(m.iso));
-    setScale(m.scale || 86400);
-    sim.paused = false;
-    sim.direction = 1;
-    if (m.eclipse) {
-      if (!world.state.trueScale) world.setTrueScale(true);
-      focusOn(m.focus || "Earth", { eclipse: true });
-    } else {
-      focusOn(m.focus);
-    }
-    closeMenus();
-  });
-  $("moments").appendChild(b);
-});
-
-const toggles = {
-  sizes: $("btn-sizes"),
-  orbits: $("btn-orbits"),
-  labels: $("btn-labels"),
-  quality: $("btn-quality"),
+export const POLES = {
+  Sun: [286.13, 63.87],
+  Mercury: [281.01, 61.414],
+  Venus: [272.76, 67.16],
+  Earth: [0, 90],
+  Moon: [269.9949, 66.5392],
+  Mars: [317.681, 52.887],
+  Jupiter: [268.057, 64.495],
+  Saturn: [40.589, 83.537],
+  Uranus: [257.311, -15.175],
+  Neptune: [299.36, 43.46],
+  Pluto: [132.993, -6.163],
+  Phobos: [317.681, 52.887],
+  Deimos: [317.681, 52.887],
+  Io: [268.057, 64.495],
+  Europa: [268.057, 64.495],
+  Ganymede: [268.057, 64.495],
+  Callisto: [268.057, 64.495],
+  Titan: [40.589, 83.537],
+  Triton: [299.36, 43.46],
 };
 
-function cycleQuality() {
-  const tiers = world.textureTiers();
-  if (tiers.length < 2) return;
-  const at = tiers.indexOf(world.state.textureQuality);
-  const next = tiers[(at + 1) % tiers.length];
-  world.setTextureQuality(next);
-  try {
-    localStorage.setItem("cosmos_tex", next);
-  } catch {
-    return;
-  }
-}
+export const ORDER = ["Sun", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
 
-function toggleSizes() {
-  world.setTrueScale(!world.state.trueScale);
-}
-
-function toggleOrbits() {
-  world.state.showOrbits = !world.state.showOrbits;
-}
-
-function toggleLabels() {
-  world.state.showLabels = !world.state.showLabels;
-}
-
-let diagOn = false;
-
-function renderDiag() {
-  const d = world.diagnostics();
-  const t = d.textureMs;
-  const supplied = Object.entries(world.state.surfaces)
-    .map(([id, surface]) => `${id} ${surface.tier}`)
-    .join(", ");
-  setText(
-    $("diag"),
-    [
-      `${fpsAvg.toFixed(0)} fps`,
-      `${d.calls} draw calls, ${Math.round(d.triangles / 1000)}k triangles`,
-      `GPU: ${d.gpu}`,
-      `Shader fallback: ${d.degraded ? "active" : "no"}`,
-      `Textures: ${t === null ? "building" : `${(t / 1000).toFixed(1)} s`}`,
-      `Supplied maps: ${supplied || "none"}`,
-    ].join("\n")
-  );
-}
-
-function toggleDiag() {
-  diagOn = !diagOn;
-  $("diag").hidden = !diagOn;
-  if (diagOn) renderDiag();
-}
-
-toggles.sizes.addEventListener("click", toggleSizes);
-toggles.orbits.addEventListener("click", toggleOrbits);
-toggles.labels.addEventListener("click", toggleLabels);
-toggles.quality.addEventListener("click", cycleQuality);
-
-let pulseActive = false;
-let pulseStartMs = 0;
-
-function startPulse() {
-  if (sim.scale < 30 || sim.scale > 20000) setScale(300);
-  sim.paused = false;
-  sim.direction = 1;
-  ruler.show();
-  world.emitPulse(sim.ms);
-  pulseStartMs = sim.ms;
-  pulseActive = true;
-  ruler.log("Light covers 1 AU in 499 s");
-}
-
-function stopPulse() {
-  world.stopPulse();
-  pulseActive = false;
-  ruler.hide();
-}
-
-function togglePulse() {
-  if (pulseActive) stopPulse();
-  else startPulse();
-}
-
-$("btn-pulse").addEventListener("click", togglePulse);
-$("ruler-close").addEventListener("click", stopPulse);
-
-const helpEl = $("help");
-let helpReturn = null;
-function toggleHelp(force) {
-  const open = force === undefined ? helpEl.hidden : force;
-  helpEl.hidden = !open;
-  if (open) {
-    helpReturn = document.activeElement;
-    $("help-card").focus();
-  } else if (helpReturn && helpReturn.focus) {
-    helpReturn.focus();
-    helpReturn = null;
-  }
-}
-helpEl.addEventListener("keydown", (e) => {
-  if (e.key === "Tab") e.preventDefault();
-});
-$("btn-help").addEventListener("click", () => {
-  closeMenus();
-  toggleHelp(true);
-});
-helpEl.addEventListener("click", () => toggleHelp(false));
-
-const navButtons = {};
-const navAU = {};
-
-const viewsRow = document.createElement("div");
-viewsRow.className = "views";
-[
-  ["Overview", "System"],
-  ["Inner", "Inner"],
-].forEach(([id, label]) => {
-  const b = document.createElement("button");
-  b.textContent = label;
-  b.addEventListener("click", () => focusOn(id));
-  viewsRow.appendChild(b);
-  navButtons[id] = b;
-});
-$("index").appendChild(viewsRow);
-
-const listEl = document.createElement("div");
-listEl.className = "index-list";
-$("index").appendChild(listEl);
-
-const INDEX_IDS = [];
-for (const id of ORDER) {
-  INDEX_IDS.push(id);
-  for (const m of MOONS) if (m.parent === id) INDEX_IDS.push(m.id);
-}
-
-INDEX_IDS.forEach((id) => {
-  const b = document.createElement("button");
-  b.className = has(ALL, id) && ALL[id].parent ? "body-row moon" : "body-row";
-  b.innerHTML = `<span>${id}</span><span class="au"></span>`;
-  b.addEventListener("click", () => focusOn(id));
-  listEl.appendChild(b);
-  navButtons[id] = b;
-  navAU[id] = b.querySelector(".au");
-});
-
-const KEY_MAP = { m: "Moon", i: "Inner", o: "Overview" };
-ORDER.forEach((id, i) => {
-  KEY_MAP[String(i)] = id;
-});
-
-let plateMore = false;
-
-function row(label, value, opts = {}) {
-  return `<tr${opts.extra ? ' class="x"' : ""}><td>${label}</td><td${opts.id ? ` id="${opts.id}"` : ""}>${value}</td></tr>`;
-}
-
-function renderPlate(id) {
-  const plate = $("plate");
-  const d = has(ALL, id) ? ALL[id] : null;
-  if (!d) {
-    plate.hidden = true;
-    return;
-  }
-  plate.hidden = false;
-  plate.style.animation = "none";
-  void plate.offsetWidth;
-  plate.style.animation = "";
-  plate.scrollTop = 0;
-  $("plate-name").textContent = d.name;
-  $("plate-type").textContent = d.type;
-
-  const ratio = d.radiusKm / 6371;
-  const pct = Math.min(100, Math.max(2, (Math.log(ratio / 0.1) / Math.log(120 / 0.1)) * 100));
-  $("meter-fill").style.width = `${pct}%`;
-  $("meter-label").textContent = `${fmtNum(ratio, 3)} x Earth's radius`;
-
-  const rows = [];
-  if (id !== "Sun") rows.push(row("Distance from Sun", "", { id: "live-sun" }));
-  rows.push(row("Mean radius", `${fmtNum(d.radiusKm, 5)} km`));
-  rows.push(row("Surface gravity", `${d.gravity.toFixed(1)} m/s<sup>2</sup>`));
-  rows.push(row("Rotation", `${fmtNum(Math.abs(d.rotationHours))} h${d.rotationHours < 0 ? " retrograde" : ""}`));
-  rows.push(row("Temperature", d.tempLabel));
-  if (d.moons !== null && d.moons !== undefined) rows.push(row("Known moons", String(d.moons)));
-
-  if (id !== "Sun" && id !== "Earth") rows.push(row("Distance from Earth", "", { id: "live-earth", extra: true }));
-  rows.push(row("Mass", `${fmtNum(d.massE24)} x 10<sup>24</sup> kg`, { extra: true }));
-  rows.push(row("Density", `${fmtNum(d.densityKgM3)} kg/m<sup>3</sup>`, { extra: true }));
-  if (d.escapeKmS) rows.push(row("Escape velocity", `${d.escapeKmS} km/s`, { extra: true }));
-  rows.push(row("Axial tilt", `${d.tiltDeg} deg`, { extra: true }));
-  if (d.semiMajorMKm !== null && d.semiMajorMKm !== undefined) {
-    rows.push(row("Orbit radius", `${fmtNum(d.semiMajorMKm)} million km`, { extra: true }));
-  } else if (d.semiMajorKm !== undefined) {
-    rows.push(row("Orbit radius", `${fmtNum(d.semiMajorKm)} km`, { extra: true }));
-  }
-  if (d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
-  if (d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
-  if (d.ringSystem !== null && d.ringSystem !== undefined) rows.push(row("Ring system", d.ringSystem ? "Yes" : "No", { extra: true }));
-  $("plate-table").innerHTML = rows.join("");
-  $("plate-facts").textContent = d.facts;
-  applyMore();
-  renderSource(id);
-}
-
-function applyMore() {
-  $("plate").classList.toggle("more", plateMore);
-  $("plate-more").textContent = plateMore ? "Less data" : "More data";
-}
-
-$("plate-more").addEventListener("click", () => {
-  plateMore = !plateMore;
-  applyMore();
-});
-
-function surfaceHTML(id) {
-  const surface = Object.hasOwn(world.state.surfaces, id) ? world.state.surfaces[id] : null;
-  if (!surface) return "Surface: procedural, not a photograph.";
-  const name = esc(surface.credit || "supplied texture");
-  const credit = surface.url ? `<a href="${esc(surface.url)}" target="_blank" rel="noopener">${name}</a>` : name;
-  const parts = [credit];
-  if (surface.license) parts.push(esc(surface.license));
-  parts.push(`${esc(surface.tier)} map`);
-  let html = `Surface: ${parts.join(", ")}.`;
-  if (surface.note) html += ` ${esc(surface.note)}`;
-  return html;
-}
-
-function renderSource(id) {
-  setHTML(
-    $("plate-src"),
-    `<a href="${SOURCE_FACTS.url}" target="_blank" rel="noopener">NASA NSSDC</a>, ${SOURCE_FACTS.version}. ` +
-      `Positions: <a href="${SOURCE_POSITIONS.url}" target="_blank" rel="noopener">${SOURCE_POSITIONS.name}</a>. ` +
-      surfaceHTML(id)
-  );
-}
-
-function focusOn(id, options = {}) {
-  if (!has(VIEWS, id) && !has(world.bodies, id)) return;
-  world.setFocus(id, options);
-  Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
-  renderPlate(id);
-  document.title = has(VIEWS, id) ? "Cosmos" : `${id} | Cosmos`;
-}
-
-function updateLive() {
-  const id = world.state.focus;
-  const d = has(ALL, id) ? ALL[id] : null;
-  if (!d) return;
-  if (id === "Sun") return;
-  const bodies = world.bodies;
-  const sunEl = $("live-sun");
-  const earthEl = $("live-earth");
-  const centerId = d.parent || id;
-  const centerBody = bodies[centerId];
-  if (!centerBody) return;
-  const sunAU = distanceAU(centerBody.pos);
-  if (sunEl) setText(sunEl, `${formatAU(sunAU)} AU`);
-  let lightText = `Sunlight takes ${formatDuration(sunAU / C_AU_S)} to arrive.`;
-
-  if (id !== "Earth") {
-    let eAU;
-    if (d.parent) {
-      const off = moonOffset(id, sim.ms);
-      eAU = separationAU(
-        [centerBody.pos[0] + off[0], centerBody.pos[1] + off[1], centerBody.pos[2] + off[2]],
-        bodies.Earth.pos
-      );
-    } else {
-      eAU = separationAU(centerBody.pos, bodies.Earth.pos);
-    }
-    if (earthEl) {
-      if (d.parent === "Earth") setText(earthEl, `${fmtNum(eAU * AU_KM, 6)} km`);
-      else setText(earthEl, `${formatAU(eAU)} AU`);
-    }
-    lightText += ` From Earth: ${formatDuration(eAU / C_AU_S)}.`;
-  }
-
-  let note = "";
-  if (id === "Earth") {
-    const s = nextSolarEclipse(sim.ms);
-    if (s && Math.abs(s.ms - sim.ms) < 3 * 3600000) note = `${s.kind} solar eclipse.`;
-  } else if (id === "Moon") {
-    const l = nextLunarEclipse(sim.ms);
-    if (l && Math.abs(l.ms - sim.ms) < 3 * 3600000) note = `${l.kind} lunar eclipse.`;
-  }
-  setText($("plate-light"), note ? `${lightText} ${note}` : lightText);
-}
-
-function isLive() {
-  return !sim.paused && sim.direction > 0 && sim.scale < 1.05 && Math.abs(sim.ms - Date.now()) < 3000;
-}
-
-function renderClock() {
-  const c = clock(sim.ms, sim.tz);
-  setText($("clock-date"), c.date);
-  setText($("clock-time"), c.time);
-  setText($("clock-zone"), c.zone);
-  const offset = sim.ms - Date.now();
-  const live = isLive();
-  const state = $("clock-state");
-  let text;
-  if (live) text = "Live";
-  else if (Math.abs(offset) < 5000 && !sim.paused) text = `Running at ${formatRate(sim.scale).toLowerCase()}`;
-  else text = `${sim.paused ? "Paused" : "Simulated"}, ${formatOffset(offset)}`;
-  setText(state, text);
-  state.classList.toggle("live", live);
-  setText($("almanac-title"), Math.abs(offset) < 12 * 3600000 ? "The sky now" : "The sky on this date");
-}
-
-function renderAlmanac() {
-  const a = almanac(sim.ms);
-  const rows = [["Earth", `${a.earthSunAU.toFixed(3)} AU, light ${formatDuration(a.earthSunLightSec)}`]];
-  if (a.moonPhase) rows.push(["Moon", `${a.moonPhase}, ${Math.round(a.moonLit * 100)}%`]);
-  if (a.nextSolar) rows.push(["Solar", `${a.nextSolar.kind}, ${a.nextSolar.date}`]);
-  if (a.nextLunar) rows.push(["Lunar", `${a.nextLunar.kind}, ${a.nextLunar.date}`]);
-  const events = [a.nextQuarter, a.nextSeason].filter(Boolean).sort((x, y) => x.ms - y.ms);
-  if (events.length) rows.push(["Next", `${events[0].name}, ${events[0].date}`]);
-  setHTML($("almanac"), rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
-}
-
-function renderDock() {
-  setText($("rate-readout"), sim.paused ? "Paused" : formatRate(sim.scale));
-  const nearest = nearestPreset(sim.scale);
-  const exact = Math.abs(Math.log(sim.scale / PRESETS[nearest][1])) < 0.03;
-  presetButtons.forEach((b, i) => b.classList.toggle("on", exact && i === nearest));
-  setHTML($("btn-play"), sim.paused ? ICON.play : ICON.pause);
-  $("btn-reverse").classList.toggle("active", sim.direction < 0);
-  const s = world.state;
-  const set = (el, on, label, value) => {
-    setHTML(el, `<span>${label}</span><b>${value}</b>`);
-    el.classList.toggle("on", on);
-  };
-  set(toggles.sizes, s.trueScale, "Planet size", s.trueScale ? "True scale" : "Exaggerated");
-  set(toggles.orbits, s.showOrbits, "Orbit trails", s.showOrbits ? "On" : "Off");
-  set(toggles.labels, s.showLabels, "Labels", s.showLabels ? "On" : "Off");
-  const tiers = world.textureTiers();
-  toggles.quality.hidden = tiers.length < 2;
-  if (tiers.length > 1) set(toggles.quality, s.textureQuality !== "2k", "Texture detail", s.textureQuality);
-  const input = $("date-input");
-  if (document.activeElement !== input) {
-    const iso = inputDate(sim.ms, sim.tz);
-    if (input.value !== iso) input.value = iso;
-  }
-}
-
-function renderIndex() {
-  for (const p of PLANETS) setText(navAU[p.id], `${formatAU(distanceAU(world.bodies[p.id].pos))} AU`);
-  for (const m of MOONS) {
-    const parent = world.bodies[m.parent];
-    if (parent) setText(navAU[m.id], `${formatAU(distanceAU(parent.pos))} AU`);
-  }
-}
-
-window.addEventListener("keydown", (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  const tag = e.target && e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA") return;
-  const k = e.key;
-  if (k === "Escape") {
-    if (!helpEl.hidden) toggleHelp(false);
-    else if (menusOpen()) closeMenus();
-    else focusOn("Overview");
-    return;
-  }
-  if (e.repeat) return;
-  if (!helpEl.hidden) {
-    if (k === "?") toggleHelp(false);
-    return;
-  }
-  if (k === " ") {
-    if (tag === "BUTTON") return;
-    e.preventDefault();
-    togglePause();
-    return;
-  }
-  if (k === "?") return toggleHelp();
-  if (k === "[") return stepScale(-1);
-  if (k === "]") return stepScale(1);
-  const lower = k.toLowerCase();
-  if (lower === "r") return toggleReverse();
-  if (lower === "n") return jumpNow();
-  if (lower === "l") return togglePulse();
-  if (lower === "t") return toggleSizes();
-  if (lower === "v") return toggleOrbits();
-  if (lower === "k") return toggleLabels();
-  if (lower === "d") return toggleDiag();
-  if (has(KEY_MAP, lower)) focusOn(KEY_MAP[lower]);
-});
-
-window.addEventListener("keyup", (e) => {
-  const tag = e.target && e.target.tagName;
-  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON") e.preventDefault();
-});
-
-function readHash() {
-  const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f));
-  if (h.ms !== null) sim.ms = h.ms;
-  if (h.scale !== null) sim.scale = h.scale;
-  return h.focus;
-}
-
-let lastHash = "";
-function writeHash() {
-  const h = buildHash(world.state.focus, sim.scale, sim.ms, Date.now());
-  if (h !== lastHash) {
-    lastHash = h;
-    try {
-      history.replaceState(null, "", `#${h}`);
-    } catch {
-      return;
-    }
-  }
-}
-
-window.addEventListener("hashchange", () => {
-  if (location.hash.replace(/^#/, "") === lastHash) return;
-  const focus = readHash();
-  setScale(sim.scale);
-  focusOn(focus || "Overview");
-});
-
-const startFocus = readHash();
-setScale(sim.scale);
-renderPlate("Overview");
-navButtons.Overview.classList.add("active");
-if (startFocus && startFocus !== "Overview") focusOn(startFocus);
-
-
-function hideIntro() {
-  const intro = $("intro");
-  if (!intro) return;
-  intro.classList.add("gone");
-  setTimeout(() => intro.remove(), 1500);
-}
-
-world
-  .loadTextures()
-  .catch((err) => console.warn("Texture loading failed", err))
-  .finally(() => {
-    hideIntro();
-    const id = world.state.focus;
-    if (has(ALL, id)) renderSource(id);
-  });
-setTimeout(hideIntro, 25000);
-
-let last = performance.now();
-let fpsAvg = 60;
-let slowTick = 0;
-let hashTick = 0;
-let clockTick = 0;
-let liveBefore = false;
-
-function step(now) {
-  const rawDt = (now - last) / 1000;
-  const dt = Math.min(0.1, rawDt);
-  last = now;
-  if (rawDt > 0) fpsAvg += (1 / rawDt - fpsAvg) * 0.05;
-
-  const stepDt = liveBefore ? Math.min(rawDt, 3600) : dt;
-  if (!sim.paused) {
-    const next = sim.ms + sim.direction * sim.scale * stepDt * 1000;
-    const wrapped = clampMs(next);
-    if (wrapped !== next && pulseActive) {
-      world.stopPulse();
-      pulseActive = false;
-      ruler.log("Pulse stopped because the clock wrapped");
-    }
-    sim.ms = wrapped;
-  }
-  liveBefore = isLive();
-
-  const out = world.update(sim.ms, sim.paused ? 0 : sim.scale, now);
-  out.arrivals.forEach((a) => {
-    ruler.log(`<b>${a.name}</b> reached after ${formatDuration(a.seconds)}`);
-  });
-
-  if (pulseActive) {
-    if (out.pulseRadius === null) {
-      pulseActive = false;
-      ruler.log(out.pulseEnd === "reversed" ? "Pulse stopped because time ran backwards" : "Pulse has left the mapped region");
-    } else {
-      const distances = {};
-      for (const p of PLANETS) distances[p.id] = distanceAU(world.bodies[p.id].pos);
-      ruler.update(out.pulseRadius, (sim.ms - pulseStartMs) / 1000, distances);
-    }
-  }
-
-  if (now - clockTick > 80) {
-    clockTick = now;
-    renderClock();
-  }
-  renderDock();
-
-  if (now - slowTick > 400) {
-    slowTick = now;
-    renderAlmanac();
-    renderIndex();
-    updateLive();
-    if (has(ALL, world.state.focus)) renderSource(world.state.focus);
-    if (diagOn) renderDiag();
-  }
-  if (now - hashTick > 1000) {
-    hashTick = now;
-    writeHash();
-  }
-
-  world.render();
-}
-
-let frameErrors = 0;
-
-function frame(now) {
-  try {
-    step(now);
-    frameErrors = 0;
-    window.cosmosReady = true;
-  } catch (err) {
-    frameErrors += 1;
-    console.error(err);
-    if (frameErrors >= 30) {
-      if (window.cosmosFatal) window.cosmosFatal("Cosmos stopped because of a repeated error.", err && err.message);
-      return;
-    }
-  }
-  requestAnimationFrame(frame);
-}
-
-requestAnimationFrame(frame);
+export const MOMENTS = [
+  { label: "Voyager 1 launch", iso: "1977-09-05T12:56:01Z", focus: "Overview", scale: 86400 },
+  { label: "Apollo 11 lands", iso: "1969-07-20T20:17:40Z", focus: "Moon", scale: 600 },
+  { label: "Venus transit, greatest", iso: "2012-06-06T01:29:36Z", focus: "Venus", scale: 3600 },
+  { label: "New Horizons at Pluto", iso: "2015-07-14T11:49:00Z", focus: "Pluto", scale: 86400 },
+  { label: "Jupiter and Saturn conjunct", iso: "2020-12-21T18:20:00Z", focus: "Jupiter", scale: 86400 },
+  { label: "Total solar eclipse, USA", iso: "2024-04-08T18:17:16Z", focus: "Earth", scale: 30, eclipse: true },
+  { label: "Total solar eclipse, Luxor", iso: "2027-08-02T10:06:41Z", focus: "Earth", scale: 30, eclipse: true },
+];

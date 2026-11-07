@@ -1,8 +1,5 @@
-import { loadApod, loadNeo, loadFlares, getApiKey, setApiKey, clearCache } from "./nasa.js";
-
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-}
+import { loadApod, loadNeo, loadFlares, getApiKey, setApiKey, clearCache, usesProxy } from "./nasa.js";
+import { esc } from "./escape.js";
 
 function safeUrl(u) {
   try {
@@ -23,13 +20,15 @@ function flareClassNote(cls) {
 export function createDispatch(els) {
   let seq = 0;
   let loaded = false;
+  let loading = false;
 
   async function load() {
-    loaded = true;
     const mine = ++seq;
+    loading = true;
     els.body.innerHTML = `<p class="dim">Contacting NASA</p>`;
     const results = await Promise.allSettled([loadApod(), loadNeo(), loadFlares()]);
     if (mine !== seq) return;
+    loading = false;
     const [apod, neo, flr] = results;
     const parts = [];
 
@@ -71,6 +70,7 @@ export function createDispatch(els) {
       );
     }
     const failed = results.filter((r) => r.status === "rejected").length;
+    loaded = failed < results.length;
     const stale = results.some((r) => r.status === "fulfilled" && r.value.stale);
     if (failed) {
       parts.push(
@@ -83,6 +83,8 @@ export function createDispatch(els) {
   }
 
   els.key.value = getApiKey() === "DEMO_KEY" ? "" : getApiKey();
+  const keyRow = els.key.closest ? els.key.closest(".keyrow") : null;
+  if (keyRow && usesProxy()) keyRow.style.display = "none";
   els.save.addEventListener("click", () => {
     setApiKey(els.key.value);
     clearCache();
@@ -92,7 +94,7 @@ export function createDispatch(els) {
     const open = els.panel.hidden;
     els.panel.hidden = !open;
     els.toggle.setAttribute("aria-expanded", String(open));
-    if (open && !loaded) load();
+    if (open && !loaded && !loading) load();
   });
 
   return { load };

@@ -1,37 +1,31 @@
 import * as Astronomy from "astronomy-engine";
 
-let solarCache = { result: null };
-let lunarCache = { result: null };
-
-export function nextSolarEclipse(ms) {
-  if (solarCache.result && solarCache.result.ms > ms) return solarCache.result;
-  try {
-    const e = Astronomy.SearchGlobalSolarEclipse(new Date(ms));
-    solarCache.result = {
-      kind: e.kind,
-      ms: e.peak.date.getTime(),
-      latitude: e.latitude,
-      longitude: e.longitude,
-    };
-    return solarCache.result;
-  } catch {
-    solarCache.result = null;
-    return null;
-  }
+function cachedFinder(search, shape) {
+  let from = -Infinity;
+  let hit = null;
+  return (ms) => {
+    if (hit && ms >= from && ms < hit.ms) return hit;
+    try {
+      hit = shape(search(new Date(ms)));
+      from = ms;
+      return hit;
+    } catch {
+      hit = null;
+      from = -Infinity;
+      return null;
+    }
+  };
 }
 
-export function nextLunarEclipse(ms) {
-  if (lunarCache.result && lunarCache.result.ms > ms) return lunarCache.result;
-  try {
-    const e = Astronomy.SearchLunarEclipse(new Date(ms));
-    lunarCache.result = {
-      kind: e.kind,
-      ms: e.peak.date.getTime(),
-      obscuration: e.obscuration,
-    };
-    return lunarCache.result;
-  } catch {
-    lunarCache.result = null;
-    return null;
-  }
-}
+export const nextSolarEclipse = cachedFinder(Astronomy.SearchGlobalSolarEclipse, (e) => ({
+  kind: e.kind,
+  ms: e.peak.date.getTime(),
+  latitude: e.latitude,
+  longitude: e.longitude,
+}));
+
+export const nextLunarEclipse = cachedFinder(Astronomy.SearchLunarEclipse, (e) => ({
+  kind: e.kind,
+  ms: e.peak.date.getTime(),
+  obscuration: e.obscuration,
+}));
