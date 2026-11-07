@@ -1,7 +1,7 @@
-import { PLANETS, SUN, MOONS, MOMENTS, ORDER, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
+import { PLANETS, MOONS, MOMENTS, ORDER, INDEX_IDS, BODIES as ALL, AU_KM, C_AU_S, SOURCE_FACTS, SOURCE_POSITIONS } from "./data.js";
 import { clampMs, distanceAU, separationAU, moonOffset } from "./ephemeris.js";
 import { inputDate, parseInputDate } from "./dates.js";
-import { parseHash, buildHash, SCALE_MIN, SCALE_MAX } from "./hash.js";
+import { parseHash, buildHash, SCALE_MIN, SCALE_MAX, SCALE_DEFAULT } from "./hash.js";
 import { createWorld } from "./world.js";
 import { VIEWS } from "./views.js";
 import { esc } from "./escape.js";
@@ -33,15 +33,9 @@ const PRESETS = [
 
 const SLIDER_MAX = 1000;
 
-const ALL = {
-  Sun: SUN,
-  ...Object.fromEntries(PLANETS.map((p) => [p.id, p])),
-  ...Object.fromEntries(MOONS.map((m) => [m.id, m])),
-};
-
 const has = (o, k) => Object.hasOwn(o, k);
 
-const sim = { ms: Date.now(), scale: 3600, direction: 1, paused: false, tz: "local" };
+const sim = { ms: Date.now(), scale: SCALE_DEFAULT, direction: 1, paused: false, tz: "local" };
 
 const savedTz = readStore("cosmos_tz");
 if (savedTz === "utc" || savedTz === "local") sim.tz = savedTz;
@@ -374,12 +368,6 @@ const listEl = document.createElement("div");
 listEl.className = "index-list";
 $("index").appendChild(listEl);
 
-const INDEX_IDS = [];
-for (const id of ORDER) {
-  INDEX_IDS.push(id);
-  for (const m of MOONS) if (m.parent === id) INDEX_IDS.push(m.id);
-}
-
 INDEX_IDS.forEach((id) => {
   const b = document.createElement("button");
   b.className = has(ALL, id) && ALL[id].parent ? "body-row moon" : "body-row";
@@ -433,7 +421,7 @@ function renderPlate(id) {
   rows.push(row("Mass", formatMass(d.massE24), { extra: true }));
   rows.push(row("Density", `${fmtNum(d.densityKgM3)} kg/m<sup>3</sup>`, { extra: true }));
   if (d.escapeKmS) rows.push(row("Escape velocity", `${d.escapeKmS} km/s`, { extra: true }));
-  rows.push(row("Axial tilt", `${d.tiltDeg} deg`, { extra: true }));
+  if (d.tiltDeg !== null && d.tiltDeg !== undefined) rows.push(row("Axial tilt", `${d.tiltDeg} deg`, { extra: true }));
   if (d.semiMajorMKm !== null && d.semiMajorMKm !== undefined) {
     rows.push(row("Orbit radius", `${fmtNum(d.semiMajorMKm)} million km`, { extra: true }));
   } else if (d.semiMajorKm !== undefined) {
@@ -442,6 +430,7 @@ function renderPlate(id) {
   if (d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
   if (d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
   if (d.ringSystem !== null && d.ringSystem !== undefined) rows.push(row("Ring system", d.ringSystem ? "Yes" : "No", { extra: true }));
+  if (d.parent) rows.push(row("Position model", d.source === "keplerian" ? "Circular approximation" : "Ephemeris", { extra: true }));
   $("plate-table").innerHTML = rows.join("");
   $("plate-facts").textContent = d.facts;
   applyMore();
@@ -490,6 +479,15 @@ function focusOn(id, options = {}) {
   Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
   renderPlate(id);
   document.title = has(VIEWS, id) ? "Cosmos" : `${id} | Cosmos`;
+  syncFlight();
+}
+
+let flightFlag = "";
+function syncFlight() {
+  const v = world.state.trans ? "1" : "0";
+  if (v === flightFlag) return;
+  flightFlag = v;
+  document.body.setAttribute("data-flying", v);
 }
 
 function updateLive() {
@@ -601,6 +599,10 @@ function renderIndex() {
   }
 }
 
+function spaceIsGlobal(el) {
+  return !!(el && el.closest && el.closest("#index, #presets, #labels"));
+}
+
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target && e.target.tagName;
@@ -618,7 +620,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (k === " ") {
-    if (tag === "BUTTON") return;
+    if (tag === "BUTTON" && !spaceIsGlobal(e.target)) return;
     e.preventDefault();
     togglePause();
     return;
@@ -639,16 +641,22 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   const tag = e.target && e.target.tagName;
-  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON") e.preventDefault();
+  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && (tag !== "BUTTON" || spaceIsGlobal(e.target))) e.preventDefault();
 });
 
 function readHash(fromChange = false) {
   const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f));
   if (h.ms !== null) sim.ms = h.ms;
   else if (fromChange) sim.ms = Date.now();
-  if (h.scale !== null) sim.scale = h.scale;
+  sim.scale = h.scale !== null ? h.scale : SCALE_DEFAULT;
   sim.paused = h.paused;
   sim.direction = h.reverse ? -1 : 1;
+  if (world.state.trueScale !== h.trueScale) {
+    restoreTrueScale = null;
+    world.setTrueScale(h.trueScale);
+  }
+  world.state.showOrbits = h.orbits;
+  world.state.showLabels = h.labels;
   return h.focus;
 }
 
@@ -657,6 +665,9 @@ function writeHash() {
   const h = buildHash(world.state.focus, sim.scale, sim.ms, Date.now(), {
     paused: sim.paused,
     reverse: sim.direction < 0,
+    trueScale: world.state.trueScale,
+    orbits: world.state.showOrbits,
+    labels: world.state.showLabels,
   });
   if (h !== lastHash) {
     lastHash = h;
@@ -727,7 +738,7 @@ function step(now) {
   liveBefore = isLive();
   lastStepMs = sim.ms;
 
-  const out = world.update(sim.ms, sim.paused ? 0 : sim.scale, now);
+  const out = world.update(sim.ms, sim.paused ? 0 : sim.scale * sim.direction, now);
   out.arrivals.forEach((a) => {
     ruler.log(`<b>${a.name}</b> reached after ${formatDuration(a.seconds)}`);
   });
@@ -762,6 +773,7 @@ function step(now) {
     writeHash();
   }
 
+  syncFlight();
   world.render();
 }
 

@@ -307,7 +307,7 @@ export const MOONS = [
     inclinationDeg: 1.08,
     eccentricity: 0.0151,
     tempLabel: "-40 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 1876,
     facts: "Orbits Mars faster than Mars rotates, rising in the west and setting in the east. Its orbit is slowly decaying.",
     palette: ["#7a6a5c", "#5a4c40", "#8c7c6c"],
@@ -333,7 +333,7 @@ export const MOONS = [
     inclinationDeg: 1.79,
     eccentricity: 0.0002,
     tempLabel: "-40 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 1479,
     facts: "The smaller and outer of Mars's two moons, likely a captured asteroid.",
     palette: ["#7a6a5c", "#5a4c40", "#8c7c6c"],
@@ -359,7 +359,7 @@ export const MOONS = [
     inclinationDeg: 0.05,
     eccentricity: 0.0041,
     tempLabel: "-163 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 3528,
     facts: "The most volcanically active body in the solar system, squeezed by Jupiter's tides.",
     palette: ["#e8d45a", "#c9a12e", "#f0e08a", "#8a6a1e"],
@@ -385,7 +385,7 @@ export const MOONS = [
     inclinationDeg: 0.47,
     eccentricity: 0.009,
     tempLabel: "-160 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 3013,
     facts: "A cracked ice shell likely hides a global saltwater ocean.",
     palette: ["#e8e0d0", "#c9c0b0", "#f0e8d8", "#a09888"],
@@ -411,7 +411,7 @@ export const MOONS = [
     inclinationDeg: 0.2,
     eccentricity: 0.001,
     tempLabel: "-163 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 1936,
     facts: "The largest moon in the solar system, bigger than Mercury, and the only moon known to have its own magnetic field.",
     palette: ["#b0a89a", "#8c8478", "#c8c0b0", "#5c5448"],
@@ -437,7 +437,7 @@ export const MOONS = [
     inclinationDeg: 0.19,
     eccentricity: 0.007,
     tempLabel: "-139 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 1834,
     facts: "The most heavily cratered body in the solar system, an old and stable surface.",
     palette: ["#6c6458", "#4a4438", "#8c8478", "#3a3428"],
@@ -463,7 +463,7 @@ export const MOONS = [
     inclinationDeg: 0.35,
     eccentricity: 0.029,
     tempLabel: "-179 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 1881,
     facts: "The only moon with a thick atmosphere, and the only body other than Earth with liquid on its surface.",
     palette: ["#e0b060", "#c09040", "#f0c880", "#806020"],
@@ -490,7 +490,7 @@ export const MOONS = [
     inclinationDeg: 156.9,
     eccentricity: 0.000016,
     tempLabel: "-235 C",
-    tiltDeg: 0,
+    tiltDeg: null,
     densityKgM3: 2061,
     spinSign: -1,
     facts: "Orbits Neptune backwards, a likely captured Kuiper Belt object. It has nitrogen geysers.",
@@ -523,7 +523,11 @@ export const POLES = {
   Triton: [299.36, 43.46],
 };
 
+export const BODIES = { Sun: SUN, ...Object.fromEntries(PLANETS.map((p) => [p.id, p])), ...Object.fromEntries(MOONS.map((m) => [m.id, m])) };
+
 export const ORDER = ["Sun", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
+
+export const INDEX_IDS = ORDER.flatMap((id) => [id, ...MOONS.filter((m) => m.parent === id).map((m) => m.id)]);
 
 export const MOMENTS = [
   { label: "Voyager 1 launch", iso: "1977-09-05T12:56:01Z", focus: "Overview", scale: 86400 },

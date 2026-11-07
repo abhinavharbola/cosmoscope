@@ -11,11 +11,10 @@ import { circleSprite, radialRing, atmosphereMaterial, pulseMaterial, patchShado
 import { createSpin, stepSpin } from "./spin.js";
 import { crossingSeconds } from "./pulse.js";
 import { VIEWS, OVERVIEW_DIST } from "./views.js";
+import { eclipseSlot, updateEclipseUniforms } from "./shadows.js";
+import { MOON_SYSTEMS, moonDisplayDistance } from "./moonlayout.js";
 
 const ART_BASE = 0.035;
-const MOON_BASE_FACTOR = 1.5;
-const MOON_RING_CLEARANCE = 1.15;
-const MOON_OUTER_FACTOR = 5;
 const PULSE_MAX_AU = 120;
 const ORBIT_REBUILD_MS = 25 * 365.25 * 86400000;
 const SUN_INTENSITY = 7;
@@ -25,14 +24,6 @@ const TEXTURE_ORDER = [
   ...TEXTURE_FIRST,
   ...[SUN, ...PLANETS, ...MOONS].map((b) => b.id).filter((id) => !TEXTURE_FIRST.includes(id)),
 ];
-
-const MOON_SYSTEMS = {};
-for (const m of MOONS) {
-  const s = (MOON_SYSTEMS[m.parent] ||= { moons: [], aMin: Infinity, aMax: -Infinity });
-  s.moons.push(m);
-  s.aMin = Math.min(s.aMin, m.semiMajorAU);
-  s.aMax = Math.max(s.aMax, m.semiMajorAU);
-}
 
 const isView = (id) => Object.hasOwn(VIEWS, id);
 
@@ -87,6 +78,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     center: [0, 0, 0],
     trans: null,
     lastNow: null,
+    lastSimMs: null,
+    contextLost: false,
     hoverId: null,
     orbitBuiltMs: null,
     degraded: false,
@@ -100,22 +93,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   const surfaceTokens = {};
   const patched = [];
 
-  const eclipseUniforms = {
-    Earth: {
-      casterPos: { value: new THREE.Vector3() },
-      sunPos: { value: new THREE.Vector3() },
-      casterRadius: { value: 0 },
-      sunRadius: { value: 0 },
-      umbraLength: { value: 1 },
-    },
-    Moon: {
-      casterPos: { value: new THREE.Vector3() },
-      sunPos: { value: new THREE.Vector3() },
-      casterRadius: { value: 0 },
-      sunRadius: { value: 0 },
-      umbraLength: { value: 1 },
-    },
-  };
+  const eclipseUniforms = { Earth: eclipseSlot(THREE), Moon: eclipseSlot(THREE) };
 
   renderer.debug.onShaderError = (gl, program, vs, fs) => {
     if (state.degraded) return;
@@ -518,8 +496,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function update(simMs, timeScale, nowMs) {
+    const jumped = state.lastSimMs !== null && Math.abs(simMs - state.lastSimMs) > 365.25 * 86400000;
+    state.lastSimMs = simMs;
     if (state.orbitBuiltMs === null) rebuildOrbits(simMs, true);
-    else if (Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs, false);
+    else if (Math.abs(simMs - state.orbitBuiltMs) > ORBIT_REBUILD_MS) rebuildOrbits(simMs, jumped);
     if (rebuildQueue.length) buildOrbit(rebuildQueue.shift(), rebuildMs);
 
     const frameDt = state.lastNow === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - state.lastNow) / 1000));
@@ -535,22 +515,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const trueOffset = moonOffset(moon.id, simMs);
       const trueLen = Math.hypot(trueOffset[0], trueOffset[1], trueOffset[2]);
 
-      let dispDist;
-      if (state.trueScale) {
-        dispDist = trueLen;
-      } else {
-        const sys = MOON_SYSTEMS[moon.parent];
-        const parentDisp = parent.radius;
-        const ringOuter = parent.data.rings
-          ? parentDisp * (parent.data.rings.outerKm / parent.data.radiusKm)
-          : 0;
-        const moonBaseR = Math.max(parentDisp * MOON_BASE_FACTOR, ringOuter * MOON_RING_CLEARANCE);
-        const moonOuterR = Math.max(parentDisp * MOON_OUTER_FACTOR, moonBaseR * 1.5);
-        const t = sys.moons.length === 1
-          ? 1
-          : (moon.semiMajorAU - sys.aMin) / (sys.aMax - sys.aMin);
-        dispDist = moonBaseR + t * (moonOuterR - moonBaseR);
-      }
+      const dispDist = moonDisplayDistance(moon, parent, trueLen, state.trueScale);
       const k = trueLen > 1e-12 ? dispDist / trueLen : 0;
       b.pos = [
         parent.pos[0] + trueOffset[0] * k,
@@ -578,38 +543,19 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       state.center = targetPos.slice();
     }
 
+    controls.update();
+    camera.updateMatrixWorld();
+
     const c = state.center;
     const halfH = window.innerHeight / 2;
     const tanHalf = Math.tan((camera.fov * Math.PI) / 360);
     const sunRel = new THREE.Vector3(-c[0], -c[1], -c[2]);
     const tmp = new THREE.Vector3();
     {
-      const R_SUN_AU = 695700 / AU_KM;
-      const R_MOON_AU = 1737.4 / AU_KM;
-      const R_EARTH_AU = 6371 / AU_KM;
-      const earthX = bodies.Earth.pos[0] - c[0];
-      const earthY = bodies.Earth.pos[1] - c[1];
-      const earthZ = bodies.Earth.pos[2] - c[2];
+      const earthRel = [bodies.Earth.pos[0] - c[0], bodies.Earth.pos[1] - c[1], bodies.Earth.pos[2] - c[2]];
       const moonOff = moonOffset("Moon", simMs);
-      const moonX = earthX + moonOff[0];
-      const moonY = earthY + moonOff[1];
-      const moonZ = earthZ + moonOff[2];
-
-      const earthUni = eclipseUniforms.Earth;
-      earthUni.casterPos.value.set(moonX, moonY, moonZ);
-      earthUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
-      earthUni.casterRadius.value = state.trueScale ? R_MOON_AU : 0;
-      earthUni.sunRadius.value = R_SUN_AU;
-      const dEM = Math.hypot(moonX - sunRel.x, moonY - sunRel.y, moonZ - sunRel.z);
-      earthUni.umbraLength.value = (R_MOON_AU * dEM) / (R_SUN_AU - R_MOON_AU) || 1;
-
-      const moonUni = eclipseUniforms.Moon;
-      moonUni.casterPos.value.set(earthX, earthY, earthZ);
-      moonUni.sunPos.value.set(sunRel.x, sunRel.y, sunRel.z);
-      moonUni.casterRadius.value = state.trueScale ? R_EARTH_AU : 0;
-      moonUni.sunRadius.value = R_SUN_AU;
-      const dM = Math.hypot(earthX - sunRel.x, earthY - sunRel.y, earthZ - sunRel.z);
-      moonUni.umbraLength.value = (R_EARTH_AU * dM) / (R_SUN_AU - R_EARTH_AU) || 1;
+      const moonRel = [earthRel[0] + moonOff[0], earthRel[1] + moonOff[1], earthRel[2] + moonOff[2]];
+      updateEclipseUniforms(eclipseUniforms, [sunRel.x, sunRel.y, sunRel.z], earthRel, moonRel, state.trueScale);
     }
 
     const earthSpin = greenwichRaRad(simMs);
@@ -635,7 +581,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
         let trueAngle = null;
         if (id === "Earth") trueAngle = earthSpin;
         else if (b.data.W0 !== undefined) trueAngle = primeMeridianRad(b.data.W0, b.data.Wdot, simMs) + b.phi;
-        b.mesh.rotation.y = stepSpin(b.spin, trueAngle, rate, spinSign, frameDt);
+        b.mesh.rotation.y = stepSpin(b.spin, trueAngle, rate, spinSign * (timeScale < 0 ? -1 : 1), frameDt);
       }
       if (b.clouds) b.clouds.rotation.y = b.mesh.rotation.y + (nowMs / 1000) * 0.0008;
 
@@ -867,9 +813,16 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
   window.addEventListener("resize", resize);
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    state.contextLost = true;
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    state.contextLost = false;
+  });
 
   function render() {
-    controls.update();
+    if (state.contextLost) return;
     camera.updateMatrixWorld();
     for (const id of Object.keys(bodies)) {
       const b = bodies[id];

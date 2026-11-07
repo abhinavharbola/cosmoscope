@@ -70,7 +70,7 @@ export function createDispatch(els) {
       );
     }
     const failed = results.filter((r) => r.status === "rejected").length;
-    loaded = failed < results.length;
+    loaded = failed === 0;
     const stale = results.some((r) => r.status === "fulfilled" && r.value.stale);
     if (failed) {
       parts.push(

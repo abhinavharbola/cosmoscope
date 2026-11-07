@@ -64,12 +64,26 @@ function keplerianOffset(moon, ms) {
   const s = Math.sin(M);
   return [a * (c * rx + s * yx), a * (c * ry + s * yy), a * (c * rz + s * yz)];
 }
-export function moonOffset(id, ms) {
-  const moon = MOON_BY_ID[id];
-  if (!moon) return [0, 0, 0];
+const OFFSET_CACHE_SIZE = 48;
+const offsetCache = new Map();
+
+function computeOffset(moon, ms) {
   if (moon.source === "ephemeris") return toThree(Astronomy.GeoMoon(new Date(ms)));
   if (moon.source === "jupiter-moons") return toThree(jupiterMoonsInfo(ms)[moon.jupiterKey]);
   return keplerianOffset(moon, ms);
+}
+
+export function moonOffset(id, ms) {
+  const moon = MOON_BY_ID[id];
+  if (!moon) return [0, 0, 0];
+  const key = `${id}|${ms}`;
+  let hit = offsetCache.get(key);
+  if (!hit) {
+    hit = computeOffset(moon, ms);
+    if (offsetCache.size >= OFFSET_CACHE_SIZE) offsetCache.delete(offsetCache.keys().next().value);
+    offsetCache.set(key, hit);
+  }
+  return hit;
 }
 
 export function greenwichRaRad(ms) {
