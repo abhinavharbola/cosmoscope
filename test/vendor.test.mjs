@@ -1,13 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { FILES } from "../tools/vendor.mjs";
 
-const pairs = [
-  ["node_modules/three/build/three.module.js", "vendor/three.module.js"],
-  ["node_modules/three/examples/jsm/controls/OrbitControls.js", "vendor/three-addons/controls/OrbitControls.js"],
-  ["node_modules/three/LICENSE", "vendor/three.LICENSE"],
-  ["node_modules/astronomy-engine/esm/astronomy.js", "vendor/astronomy.js"],
-];
+const pairs = FILES.filter(([from, , optional]) => !optional || existsSync(new URL(`../${from}`, import.meta.url)));
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url));
 
 test("vendored libraries are byte-identical to the pinned npm packages", () => {

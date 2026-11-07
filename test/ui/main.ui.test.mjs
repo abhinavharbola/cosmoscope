@@ -187,3 +187,32 @@ test("the almanac lists the next phase and the next season separately", () => {
   assert.ok(text.includes("Phase"), text);
   assert.ok(text.includes("Season"), text);
 });
+
+test("Space pauses even when an index row has focus, but still activates transport buttons", () => {
+  w.location.hash = "#s=60";
+  settle();
+  const row = w.document.querySelector("#index .body-row");
+  row.focus();
+  const ev = press(row, " ");
+  frame();
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal($("rate-readout").textContent, "Paused");
+  press(w.document.body, " ");
+  frame();
+  assert.notEqual($("rate-readout").textContent, "Paused");
+  const ev2 = press($("btn-now"), " ");
+  assert.equal(ev2.defaultPrevented, false);
+});
+
+test("view toggles in the hash are restored", async () => {
+  w.location.hash = "#s=60&z=1&o=0&k=0";
+  await pause(50);
+  settle();
+  assert.equal(stub.state.trueScale, true);
+  assert.equal(stub.state.showOrbits, false);
+  assert.equal(stub.state.showLabels, false);
+  w.location.hash = "#s=60";
+  await pause(50);
+  assert.equal(stub.state.trueScale, false);
+  assert.equal(stub.state.showOrbits, true);
+});

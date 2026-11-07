@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseHash, buildHash } from "../src/hash.js";
+import { parseHash, buildHash, SCALE_MAX, SCALE_MIN } from "../src/hash.js";
 import { VIEWS } from "../src/views.js";
 import { ORDER, MOONS } from "../src/data.js";
 
@@ -38,4 +38,26 @@ test("hash carries pause and reverse flags", () => {
   const plain = parseHash(buildHash("Mars", 60, now, now), valid);
   assert.equal(plain.paused, false);
   assert.equal(plain.reverse, false);
+});
+
+test("scale extremes survive a hash round trip", () => {
+  const now = Date.parse("2026-10-31T00:00:00Z");
+  for (const scale of [SCALE_MIN, 3600, 31557600, SCALE_MAX]) {
+    const back = parseHash(buildHash("Overview", scale, now, now), valid).scale;
+    assert.ok(back !== null, String(scale));
+    assert.ok(Math.abs(back - scale) / scale < 1e-3, `${scale} ${back}`);
+  }
+});
+
+test("hash carries view toggles", () => {
+  const now = Date.parse("2026-10-31T00:00:00Z");
+  const h = buildHash("Earth", 30, now, now, { trueScale: true, orbits: false, labels: false });
+  const back = parseHash(h, valid);
+  assert.equal(back.trueScale, true);
+  assert.equal(back.orbits, false);
+  assert.equal(back.labels, false);
+  const plain = parseHash(buildHash("Earth", 30, now, now, { orbits: true, labels: true }), valid);
+  assert.equal(plain.trueScale, false);
+  assert.equal(plain.orbits, true);
+  assert.equal(plain.labels, true);
 });

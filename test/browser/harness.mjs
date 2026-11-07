@@ -61,3 +61,7 @@ export async function centerStats(page, buffer) {
     return { mean, std: Math.sqrt(Math.max(0, sq / n - mean * mean)) };
   }, buffer.toString("base64"));
 }
+
+export async function settled(page) {
+  await page.waitForFunction(() => document.body.getAttribute("data-flying") === "0", null, { timeout: 30000 });
+}

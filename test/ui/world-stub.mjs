@@ -1,5 +1,7 @@
 import { ORDER, MOONS } from "../../src/data.js";
 
+export let state = null;
+
 export const calls = { emit: 0, stop: 0, focus: [], trueScale: [] };
 
 export function createWorld() {
@@ -13,7 +15,7 @@ export function createWorld() {
     const parentPos = bodies[m.parent].pos;
     bodies[m.id].pos = [parentPos[0] + 0.002, 0, 0];
   }
-  const state = { focus: "Overview", trueScale: false, showOrbits: true, showLabels: true, surfaces: {}, textureQuality: "2k" };
+  state = { focus: "Overview", trueScale: false, showOrbits: true, showLabels: true, surfaces: {}, textureQuality: "2k" };
   let pulse = false;
   return {
     state,

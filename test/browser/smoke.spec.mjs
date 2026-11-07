@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { ORDER, MOONS } from "../../src/data.js";
-import { installStubs, watch, bootDone, centerStats } from "./harness.mjs";
+import { installStubs, watch, bootDone, centerStats, settled } from "./harness.mjs";
 
 const BODIES = [...ORDER, ...MOONS.map((m) => m.id)];
 const SHOTS = "test-results/screens";
@@ -57,7 +57,7 @@ test.describe("session", () => {
       await expect(page.locator("#plate")).toBeVisible();
       await expect(page.locator("#plate-name")).toHaveText(id);
       await expect(page).toHaveTitle(`${id} | Cosmos`);
-      await page.waitForTimeout(2800);
+      await settled(page);
 
       const view = page.viewportSize();
       await page.mouse.move(view.width / 2, view.height / 2);
@@ -79,7 +79,7 @@ test.describe("session", () => {
     await page.locator("#index .views button", { hasText: "System" }).click();
     await expect(page).toHaveTitle("Cosmos");
     await expect(page.locator("#plate")).toBeHidden();
-    await page.waitForTimeout(2800);
+    await settled(page);
     await page.screenshot({ path: `${SHOTS}/00-System.png` });
     const label = page.locator("#labels .label", { hasText: "Jupiter" });
     await expect(label).toBeVisible();
@@ -94,7 +94,7 @@ test.describe("session", () => {
     await expect(page.locator("#plate-name")).toHaveText("Moon");
     await page.keyboard.press("i");
     await expect(page.locator("#index .views button", { hasText: "Inner" })).toHaveClass(/active/);
-    await page.waitForTimeout(2800);
+    await settled(page);
     await page.screenshot({ path: `${SHOTS}/00-Inner.png` });
   });
 

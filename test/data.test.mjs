@@ -9,7 +9,10 @@ const all = [SUN, ...PLANETS, ...MOONS];
 test("body values match the pinned NSSDC fixture", () => {
   for (const b of all) {
     const ref = fx.bodies[b.id];
-    for (const [k, v] of Object.entries(ref)) assert.ok(Math.abs(b[k] - v) < 1e-9, `${b.id}.${k}: ${b[k]} vs ${v}`);
+    for (const [k, v] of Object.entries(ref)) {
+      assert.equal(typeof b[k], "number", `${b.id}.${k} missing`);
+      assert.ok(Math.abs(b[k] - v) < 1e-9, `${b.id}.${k}: ${b[k]} vs ${v}`);
+    }
   }
 });
 
