@@ -67,7 +67,7 @@ export function formatGravity(g) {
 
 export function formatMass(massE24) {
   if (massE24 === null || massE24 === undefined || !Number.isFinite(massE24) || massE24 <= 0) return "n/a";
-  if (massE24 >= 0.01) return `${fmtNum(massE24)} x 10<sup>24</sup> kg`;
+  if (massE24 >= 0.01 && massE24 < 10000) return `${fmtNum(massE24)} x 10<sup>24</sup> kg`;
   const kg = massE24 * 1e24;
   let exp = Math.floor(Math.log10(kg));
   let mant = Number((kg / 10 ** exp).toPrecision(4));

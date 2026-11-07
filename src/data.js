@@ -256,7 +256,7 @@ export const PLANETS = [
     ringSystem: false,
     tempLabel: "-225 C",
     tiltDeg: 119.5,
-    densityKgM3: 1850,
+    densityKgM3: 1854,
     facts: "New Horizons imaged its heart-shaped nitrogen ice plain in 2015.",
     palette: ["#b59a84", "#8a7260", "#e0d2c3", "#5e4c40"],
     kind: "pluto",

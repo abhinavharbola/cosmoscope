@@ -472,15 +472,17 @@ export async function buildMaps(body) {
 export async function sunMap() {
   const rand = mulberry(7);
   const ns = layers(rand, [12, 32, 96, 192, 384]);
-  const spots = layers(rand, [10, 20]);
+  const spots = layers(rand, [24, 56]);
   const pal = ["#ff7a12", "#ffa328", "#ffc85a", "#fff0b0"].map(hexToRgb);
   const [c] = await paintMulti(1536, 768, 1, (u, v, x, y, outs) => {
-    const n = fbm(ns, u, v);
-    let col = samplePalette(pal, clamp(n * 1.5 - 0.15));
     const lat = Math.abs(v - 0.5);
+    const vm = 0.5 - lat;
+    const n = fbm(ns, u, vm);
+    let col = samplePalette(pal, clamp(n * 1.5 - 0.15));
     if (lat > 0.08 && lat < 0.24) {
-      const s = smooth(0.66, 0.74, fbm(spots, u, v));
-      col = mix(col, [70, 24, 6], s * 0.85);
+      const edge = Math.min(smooth(0.08, 0.12, lat), 1 - smooth(0.2, 0.24, lat));
+      const s = smooth(0.68, 0.8, fbm(spots, u, vm)) * edge;
+      col = mix(col, [70, 24, 6], s * 0.7);
     }
     put(outs[0], col);
   });

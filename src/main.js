@@ -85,7 +85,7 @@ const savedTex = readStore("cosmos_tex");
 if (savedTex) world.setTextureQuality(savedTex);
 
 const clock = createClock();
-const textCache = new Map();
+const textCache = new WeakMap();
 
 function setText(el, text) {
   if (textCache.get(el) === text) return;
@@ -344,8 +344,13 @@ function toggleHelp(force) {
   }
 }
 helpEl.addEventListener("keydown", (e) => {
-  if (e.key === "Tab") e.preventDefault();
+  if (e.key !== "Tab") return;
+  e.preventDefault();
+  const close = $("help-close");
+  if (document.activeElement === close) $("help-card").focus();
+  else close.focus();
 });
+$("help-close").addEventListener("click", () => toggleHelp(false));
 $("btn-help").addEventListener("click", () => {
   closeMenus();
   toggleHelp(true);
@@ -450,6 +455,7 @@ function renderCraftPlate(id) {
   $("plate-name").textContent = d.name;
   $("plate-type").textContent = d.launch ? `${KIND_LABEL[d.kind]}, launched ${d.launch}` : KIND_LABEL[d.kind];
   plate.querySelector(".meter-wrap").hidden = true;
+  setText($("plate-light"), "");
   const rows = [
     row("Status", "", { id: "live-status" }),
     row("Distance from Sun", "", { id: "live-sun" }),
@@ -515,6 +521,7 @@ function renderPlate(id) {
     return;
   }
   plate.querySelector(".meter-wrap").hidden = false;
+  setText($("plate-light"), "");
   const d = has(ALL, id) ? ALL[id] : null;
   if (!d) {
     plate.hidden = true;
@@ -551,8 +558,9 @@ function renderPlate(id) {
   } else if (d.semiMajorKm !== undefined) {
     rows.push(row("Orbit radius", `${fmtNum(d.semiMajorKm)} km`, { extra: true }));
   }
-  if (d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
-  if (d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
+  const modelled = d.source !== "keplerian";
+  if (modelled && d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
+  if (modelled && d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
   if (d.ringSystem !== null && d.ringSystem !== undefined) rows.push(row("Ring system", d.ringSystem ? "Yes" : "No", { extra: true }));
   if (d.parent) rows.push(row("Position model", d.source === "keplerian" ? "Circular approximation" : "Ephemeris", { extra: true }));
   $("plate-table").innerHTML = rows.join("");
@@ -622,7 +630,10 @@ function updateLive() {
   }
   const d = has(ALL, id) ? ALL[id] : null;
   if (!d) return;
-  if (id === "Sun") return;
+  if (id === "Sun") {
+    setText($("plate-light"), "");
+    return;
+  }
   const bodies = world.bodies;
   const sunEl = $("live-sun");
   const earthEl = $("live-earth");
@@ -734,9 +745,10 @@ function renderIndex() {
   }
 }
 
-function spaceIsGlobal(el) {
-  return !!(el && el.closest && el.closest("#index, #presets, #labels"));
-}
+document.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest && e.target.closest("#index button, #presets button, #labels button");
+  if (b && e.detail > 0) b.blur();
+});
 
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -755,7 +767,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (k === " ") {
-    if (tag === "BUTTON" && !spaceIsGlobal(e.target)) return;
+    if (tag === "BUTTON") return;
     e.preventDefault();
     togglePause();
     return;
@@ -776,7 +788,7 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   const tag = e.target && e.target.tagName;
-  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && (tag !== "BUTTON" || spaceIsGlobal(e.target))) e.preventDefault();
+  if (e.key === " " && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON") e.preventDefault();
 });
 
 function readHash(fromChange = false) {

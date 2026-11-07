@@ -4,7 +4,8 @@ import { esc } from "./escape.js";
 function safeUrl(u) {
   try {
     const x = new URL(u, location.href);
-    return x.protocol === "https:" || x.protocol === "http:" ? x.href : "#";
+    if (x.protocol === "http:") x.protocol = "https:";
+    return x.protocol === "https:" ? x.href : "#";
   } catch {
     return "#";
   }

@@ -45,13 +45,13 @@ function prune() {
 
 prune();
 
-async function cached(name, loader) {
+async function cached(name, day, loader) {
   const storeKey = `nasa_cache_${name}`;
   const fresh = readEntry(storeKey);
-  if (fresh && Date.now() - fresh.t < TTL_MS) return { data: fresh.d, stale: false };
+  if (fresh && fresh.day === day && Date.now() - fresh.t < TTL_MS) return { data: fresh.d, stale: false };
   try {
     const data = await loader();
-    writeStore(storeKey, JSON.stringify({ t: Date.now(), d: data }));
+    writeStore(storeKey, JSON.stringify({ t: Date.now(), day, d: data }));
     return { data, stale: false };
   } catch (err) {
     const old = readEntry(storeKey);
@@ -79,7 +79,7 @@ async function getJson(path) {
 }
 
 export function loadApod() {
-  return cached(`apod_${ymd(new Date())}`, async () => {
+  return cached("apod", ymd(new Date()), async () => {
     const j = await getJson("/planetary/apod");
     return { title: j.title, url: j.url, hdurl: j.hdurl, mediaType: j.media_type, date: j.date, copyright: j.copyright || null };
   });
@@ -87,7 +87,7 @@ export function loadApod() {
 
 export function loadNeo() {
   const today = ymd(new Date());
-  return cached(`neo_${today}`, async () => {
+  return cached("neo", today, async () => {
     const j = await getJson(`/neo/rest/v1/feed?start_date=${today}&end_date=${today}`);
     const list = Object.values(j.near_earth_objects).flat();
     const rows = list
@@ -110,7 +110,7 @@ export function loadNeo() {
 export function loadFlares() {
   const end = new Date();
   const start = new Date(end.getTime() - 14 * 86400000);
-  return cached(`flr_${ymd(end)}`, async () => {
+  return cached("flr", ymd(end), async () => {
     const j = await getJson(`/DONKI/FLR?startDate=${ymd(start)}&endDate=${ymd(end)}`);
     const rows = (Array.isArray(j) ? j : []).map((f) => ({
       cls: f.classType,

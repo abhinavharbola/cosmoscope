@@ -19,6 +19,8 @@ export function inputDate(ms, tz) {
 export function parseInputDate(v, tz) {
   const [y, m, d] = String(v).split("-").map(Number);
   if (!y || !m || !d) return NaN;
+  if (y < 1801) return MIN_MS;
+  if (y > 2198) return MAX_MS;
   const ms = tz === "utc" ? Date.UTC(y, m - 1, d, 12) : new Date(y, m - 1, d, 12).getTime();
   if (!Number.isFinite(ms)) return NaN;
   return Math.min(MAX_MS, Math.max(MIN_MS, ms));

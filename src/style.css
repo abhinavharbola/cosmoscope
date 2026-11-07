@@ -99,6 +99,8 @@ button:focus:not(:focus-visible) { outline: none; }
 
 #left > * { pointer-events: auto; }
 .help-card:focus { outline: none; }
+.help-close { margin-top: 16px; padding: 6px 14px; background: none; border: 1px solid var(--faint); color: var(--ink); font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.help-close:hover { color: var(--amber); border-color: var(--amber); }
 #mast { flex: none; }
 
 .wordmark {
@@ -558,12 +560,20 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 @media (max-width: 860px) {
-  .index-list, #almanac, .almanac-title { display: none; }
+  #almanac, .almanac-title { display: none; }
   #left { right: 26px; width: auto; bottom: auto; }
+  .index-list { flex-direction: row; overflow-x: auto; margin-top: 6px; gap: 4px; scrollbar-width: none; }
+  .index-list::-webkit-scrollbar { display: none; }
+  .index-list .body-row { display: block; width: auto; flex: none; white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; padding: 4px 8px; }
+  .index-list .body-row.active { border-bottom-color: var(--amber); }
+  .index-list .body-row .au, .index-list .index-sub, .index-head { display: none; }
+  .mission-list { margin-top: 0; }
+  .index-list .body-row.moon { padding-left: 8px; }
   #plate { top: auto; bottom: 140px; left: 26px; right: 26px; width: auto; max-height: 30vh; border-left: 0; border-top: 1px solid var(--faint); padding: 10px 0 0; }
   .dock-row { flex-wrap: wrap; gap: 10px 16px; }
   .rate { order: 3; flex-basis: 100%; }
-  #presets button:nth-child(odd) { display: none; }
+  #presets { overflow-x: auto; gap: 14px; scrollbar-width: none; }
+  #presets button { flex: none; }
 }
 
 @media (max-height: 760px) {
