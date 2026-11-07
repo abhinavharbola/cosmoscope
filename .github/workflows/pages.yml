@@ -39,8 +39,7 @@ jobs:
           mkdir _site
           cp -r index.html src textures vendor _site/
           if [ -n "$NASA_PROXY_URL" ]; then
-            sed -i "s|<meta name=\"nasa-proxy\" content=\"\">|<meta name=\"nasa-proxy\" content=\"${NASA_PROXY_URL}\">|" _site/index.html
-            grep -q "content=\"${NASA_PROXY_URL}\"" _site/index.html
+            node tools/inject-proxy.mjs _site/index.html
           fi
       - uses: actions/upload-pages-artifact@v3
         with:
