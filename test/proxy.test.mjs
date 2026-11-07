@@ -77,3 +77,19 @@ test("proxy reports upstream failure with cors headers", async () => {
   assert.equal(res.status, 502);
   assert.equal(res.headers.get("access-control-allow-origin"), "https://site.example");
 });
+
+test("proxy rejects impossible dates and oversized or reversed ranges", async () => {
+  const fake = fakeFetch();
+  const get = (qs) => handle(new Request(`https://p.example/DONKI/FLR?${qs}`, { headers: HEAD }), ENV, fake);
+  assert.equal((await get("startDate=2026-13-45")).status, 400);
+  assert.equal((await get("startDate=2026-02-30")).status, 400);
+  assert.equal((await get("startDate=2026-10-31&endDate=2026-10-01")).status, 400);
+  assert.equal((await get("startDate=2026-01-01&endDate=2026-12-31")).status, 400);
+  assert.equal((await get("startDate=2026-10-01&endDate=2026-10-31")).status, 200);
+  const neo = await handle(
+    new Request("https://p.example/neo/rest/v1/feed?start_date=2026-10-01&end_date=2026-10-20", { headers: HEAD }),
+    ENV,
+    fake
+  );
+  assert.equal(neo.status, 400);
+});

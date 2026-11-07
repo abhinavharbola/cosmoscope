@@ -15,7 +15,9 @@ const payloads = {
 
 globalThis.document = { querySelector: () => null };
 globalThis.location = { href: "https://site.example/" };
+let failing = false;
 globalThis.fetch = async (u) => {
+  if (failing) throw new Error("offline");
   const path = new URL(u).pathname;
   return new Response(JSON.stringify(payloads[path]), { status: 200, headers: { "content-type": "application/json" } });
 };
@@ -37,5 +39,27 @@ test("dispatch escapes feed content and neutralises unsafe urls", async () => {
   assert.ok(!html.includes("<script>"), html);
   assert.ok(!html.includes("<b>X9"), html);
   assert.ok(!html.includes("javascript:"), html);
+  assert.equal(els.badge.textContent, "0");
+});
+
+test("a failed first load is retried when the panel is reopened", async () => {
+  let click = null;
+  const els = {
+    body: { innerHTML: "" },
+    badge: { textContent: "" },
+    key: { value: "" },
+    save: { addEventListener() {} },
+    toggle: { addEventListener: (_, fn) => (click = fn), setAttribute() {} },
+    panel: { hidden: true },
+  };
+  createDispatch(els);
+  failing = true;
+  click();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!els.body.innerHTML.includes("Near-Earth"), els.body.innerHTML);
+  failing = false;
+  click();
+  click();
+  await new Promise((r) => setTimeout(r, 30));
   assert.equal(els.badge.textContent, "0");
 });

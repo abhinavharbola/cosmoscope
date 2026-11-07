@@ -106,7 +106,7 @@ test("keyboard handling", () => {
   assert.equal($("help").hidden, true);
 });
 
-test("NASA feeds load on the first panel open only", async () => {
+test("NASA feeds load on first open and a failed load is retried on reopen", async () => {
   settle();
   assert.equal(fetchCalls, 0);
   $("dispatch-toggle").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
@@ -117,7 +117,7 @@ test("NASA feeds load on the first panel open only", async () => {
   $("dispatch-toggle").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   $("dispatch-toggle").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await pause(50);
-  assert.equal(fetchCalls, first);
+  assert.ok(fetchCalls > first);
 });
 
 test("the clock stays live across a stalled frame", () => {
@@ -154,4 +154,36 @@ test("a clock wrap stops the light pulse with its own message", async () => {
   settle();
   assert.ok(stub.calls.stop > stops);
   assert.ok($("ruler-last").textContent.includes("wrapped"), $("ruler-last").textContent);
+});
+
+test("jumping to a date while live is not undone on the next frame", () => {
+  w.location.hash = "#s=1";
+  frame();
+  settle(3);
+  $("clock-date").textContent = "";
+  w.location.hash = "#s=1&t=2020-01-01T12:00:00Z";
+  return pause(50).then(() => {
+    settle(3);
+    assert.ok($("clock-date").textContent.includes("2020"), $("clock-date").textContent);
+  });
+});
+
+test("hash flags restore pause and reverse", async () => {
+  w.location.hash = "#s=60&p=1&r=1";
+  await pause(50);
+  settle();
+  assert.equal($("rate-readout").textContent, "Paused");
+  assert.equal($("btn-reverse").classList.contains("active"), true);
+  w.location.hash = "#s=60";
+  await pause(50);
+  settle();
+  assert.equal($("btn-reverse").classList.contains("active"), false);
+  assert.notEqual($("rate-readout").textContent, "Paused");
+});
+
+test("the almanac lists the next phase and the next season separately", () => {
+  settle();
+  const text = $("almanac").textContent;
+  assert.ok(text.includes("Phase"), text);
+  assert.ok(text.includes("Season"), text);
 });

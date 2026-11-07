@@ -7,7 +7,7 @@ register("../test/hooks.mjs", import.meta.url);
 installCanvas();
 
 const { buildMaps, sunMap, ringTexture } = await import("../src/textures.js");
-const { PLANETS, MOON } = await import("../src/data.js");
+const { PLANETS, MOONS } = await import("../src/data.js");
 const { milkyWayTexture } = await import("../src/sky.js");
 
 const only = new Set(process.argv.slice(2));
@@ -31,7 +31,7 @@ async function timed(name, fn) {
 let total = 0;
 const t0 = performance.now();
 
-for (const body of [...PLANETS, MOON]) {
+for (const body of [...PLANETS, ...MOONS]) {
   const maps = await timed(body.id, () => buildMaps(body));
   if (!maps) continue;
   for (const [slot, tex] of Object.entries(maps)) await save(`${body.id}_${slot}`, tex);

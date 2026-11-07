@@ -1,4 +1,9 @@
 function parseColor(c) {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  if (hex) {
+    const h = hex[1].length === 3 ? [...hex[1]].map((x) => x + x).join("") : hex[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat(1);
+  }
   const m = /rgba?\(([^)]+)\)/.exec(c);
   if (!m) throw new Error(`Unsupported color ${c}`);
   const p = m[1].split(",").map((s) => parseFloat(s));

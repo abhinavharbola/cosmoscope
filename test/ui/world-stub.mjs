@@ -1,26 +1,18 @@
-export const VIEWS = { Overview: { dist: 85 }, Inner: { dist: 4.5 } };
-export const calls = { emit: 0, stop: 0, focus: [] };
+import { ORDER, MOONS } from "../../src/data.js";
 
-const ids = [
-  "Sun", "Mercury", "Venus", "Earth", "Moon",
-  "Mars", "Phobos", "Deimos",
-  "Jupiter", "Io", "Europa", "Ganymede", "Callisto",
-  "Saturn", "Titan",
-  "Uranus",
-  "Neptune", "Triton",
-  "Pluto",
-];
+export const calls = { emit: 0, stop: 0, focus: [], trueScale: [] };
 
 export function createWorld() {
   const bodies = {};
-  ids.forEach((id, i) => {
+  [...ORDER, ...MOONS.map((m) => m.id)].forEach((id, i) => {
     bodies[id] = { pos: [i * 0.5, 0, 0], data: { parent: null } };
   });
   bodies.Earth.pos = [1, 0, 0];
-  bodies.Moon.pos = [1.002, 0, 0];
-  bodies.Moon.data.parent = "Earth";
-  bodies.Io.pos = [5.002, 0, 0];
-  bodies.Io.data.parent = "Jupiter";
+  for (const m of MOONS) {
+    bodies[m.id].data.parent = m.parent;
+    const parentPos = bodies[m.parent].pos;
+    bodies[m.id].pos = [parentPos[0] + 0.002, 0, 0];
+  }
   const state = { focus: "Overview", trueScale: false, showOrbits: true, showLabels: true, surfaces: {}, textureQuality: "2k" };
   let pulse = false;
   return {
@@ -44,6 +36,7 @@ export function createWorld() {
     },
     setTrueScale(v) {
       state.trueScale = v;
+      calls.trueScale.push(v);
     },
     loadTextures: () => Promise.resolve(),
     setTextureQuality() {},

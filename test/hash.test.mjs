@@ -28,3 +28,14 @@ test("hash range checks and round trip", () => {
   assert.equal(back.ms, Date.parse("2020-01-01T00:00:00Z"));
   assert.equal(buildHash("Overview", 1, now, now), "s=1");
 });
+
+test("hash carries pause and reverse flags", () => {
+  const now = Date.parse("2026-10-31T00:00:00Z");
+  const h = buildHash("Mars", 60, now, now, { paused: true, reverse: true });
+  const back = parseHash(h, valid);
+  assert.equal(back.paused, true);
+  assert.equal(back.reverse, true);
+  const plain = parseHash(buildHash("Mars", 60, now, now), valid);
+  assert.equal(plain.paused, false);
+  assert.equal(plain.reverse, false);
+});
