@@ -188,20 +188,43 @@ test("the almanac lists the next phase and the next season separately", () => {
   assert.ok(text.includes("Season"), text);
 });
 
-test("Space pauses even when an index row has focus, but still activates transport buttons", () => {
+test("Space pauses from the page body but activates any focused button", () => {
   w.location.hash = "#s=60";
   settle();
   const row = w.document.querySelector("#index .body-row");
   row.focus();
   const ev = press(row, " ");
   frame();
-  assert.equal(ev.defaultPrevented, true);
+  assert.equal(ev.defaultPrevented, false);
+  assert.notEqual($("rate-readout").textContent, "Paused");
+  press(w.document.body, " ");
+  frame();
   assert.equal($("rate-readout").textContent, "Paused");
   press(w.document.body, " ");
   frame();
   assert.notEqual($("rate-readout").textContent, "Paused");
   const ev2 = press($("btn-now"), " ");
   assert.equal(ev2.defaultPrevented, false);
+});
+
+test("the Sun plate never shows another body's light time", () => {
+  settle();
+  press(w.document.body, "3");
+  settle(3);
+  press(w.document.body, "0");
+  assert.equal($("plate-light").textContent, "");
+  settle(3);
+  assert.equal($("plate-light").textContent, "");
+});
+
+test("the help dialog has a close button and keeps Tab inside", () => {
+  press(w.document.body, "?");
+  assert.equal($("help").hidden, false);
+  const ev = press($("help-card"), "Tab");
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(w.document.activeElement, $("help-close"));
+  $("help-close").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal($("help").hidden, true);
 });
 
 test("view toggles in the hash are restored", async () => {

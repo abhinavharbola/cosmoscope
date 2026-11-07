@@ -34,3 +34,8 @@ test("formatMass switches to kilograms for small moons", () => {
   assert.equal(formatMass(1.5e-9), "1.5 x 10<sup>15</sup> kg");
   assert.equal(formatMass(undefined), "n/a");
 });
+
+test("formatMass uses a normal exponent for the Sun", () => {
+  assert.equal(formatMass(1988400), "1.988 x 10<sup>30</sup> kg");
+  assert.equal(formatMass(1898), "1898 x 10<sup>24</sup> kg");
+});

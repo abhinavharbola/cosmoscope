@@ -72,3 +72,10 @@ test("hash carries the missions toggle and craft focus ids", () => {
   assert.equal(parseHash(buildHash("Voyager1", 3600, now, now, { missions: true }), withCraft).missions, true);
   assert.equal(parseHash("#f=Voyager1", valid).focus, null);
 });
+
+test("hash time must be a full ISO stamp", () => {
+  assert.equal(parseHash("#t=1", valid).ms, null);
+  assert.equal(parseHash("#t=garbage", valid).ms, null);
+  assert.equal(parseHash("#t=2020-06-01T12:00:00Z", valid).ms, Date.parse("2020-06-01T12:00:00Z"));
+  assert.equal(parseHash("#t=2020-06-01", valid).ms, Date.parse("2020-06-01"));
+});

@@ -42,6 +42,22 @@ test("dispatch escapes feed content and neutralises unsafe urls", async () => {
   assert.equal(els.badge.textContent, "0");
 });
 
+test("dispatch upgrades http image urls to https", async () => {
+  payloads["/planetary/apod"] = { title: "T", url: "http://apod.example/a.jpg", media_type: "image", date: "2026-10-31" };
+  const els = {
+    body: { innerHTML: "" },
+    badge: { textContent: "" },
+    key: { value: "" },
+    save: { addEventListener() {} },
+    toggle: { addEventListener() {}, setAttribute() {} },
+    panel: { hidden: true },
+  };
+  const { createDispatch: make } = await import("../src/dispatch.js");
+  await make(els).load();
+  assert.ok(els.body.innerHTML.includes("https://apod.example/a.jpg"), els.body.innerHTML);
+  assert.ok(!els.body.innerHTML.includes("http://apod.example"), els.body.innerHTML);
+});
+
 test("a failed first load is retried when the panel is reopened", async () => {
   let click = null;
   const els = {

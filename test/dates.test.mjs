@@ -9,3 +9,14 @@ test("inputDate stays inside the range the date field accepts", () => {
   assert.ok(inputDate(MIN_MS, "local") >= "1801-01-01");
   assert.ok(inputDate(MAX_MS, "local") <= "2198-12-31");
 });
+
+import { parseInputDate } from "../src/dates.js";
+
+test("parseInputDate clamps out-of-range and two-digit years instead of wrapping them", () => {
+  assert.equal(parseInputDate("0099-05-05", "utc"), MIN_MS);
+  assert.equal(parseInputDate("0001-01-01", "utc"), MIN_MS);
+  assert.equal(parseInputDate("1700-05-05", "utc"), MIN_MS);
+  assert.equal(parseInputDate("9999-05-05", "utc"), MAX_MS);
+  assert.equal(parseInputDate("2026-11-07", "utc"), Date.UTC(2026, 10, 7, 12));
+  assert.ok(Number.isNaN(parseInputDate("", "utc")));
+});
