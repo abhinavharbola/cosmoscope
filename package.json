@@ -12,6 +12,7 @@
     "test": "node --test test/*.test.mjs",
     "textures": "node tools/render-textures.mjs",
     "textures:fetch": "node tools/fetch-textures.mjs",
+    "textures:check": "node tools/check-textures.mjs",
     "test:browser": "playwright test",
     "test:ui": "node --test test/ui/*.test.mjs",
     "vendor": "node tools/vendor.mjs",

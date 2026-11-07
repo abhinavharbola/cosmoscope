@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   validateConfig,
@@ -131,7 +131,7 @@ export async function main(argv) {
   }
   if (!opts.dry) {
     const target = new URL(opts.out, root);
-    await mkdir(path.dirname(target.pathname), { recursive: true });
+    await mkdir(path.dirname(fileURLToPath(target)), { recursive: true });
     await writeFile(target, body);
     console.log(`wrote ${opts.out}`);
   }

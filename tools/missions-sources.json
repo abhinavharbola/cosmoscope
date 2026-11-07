@@ -143,7 +143,7 @@
       "id": "Bennu",
       "name": "101955 Bennu",
       "kind": "asteroid",
-      "command": "DES=20101955;",
+      "command": "DES=2101955;",
       "from": "2010-01-01",
       "to": "2040-01-01",
       "stepMinutes": 1440,

@@ -21,6 +21,7 @@ jobs:
     env:
       NASA_PROXY_URL: ${{ vars.NASA_PROXY_URL }}
       FETCH_TEXTURES: ${{ vars.FETCH_TEXTURES }}
+      BAKE_MISSIONS: ${{ vars.BAKE_MISSIONS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,10 +31,16 @@ jobs:
           cache: npm
       - run: npm ci
         if: env.FETCH_TEXTURES == 'true'
-      - run: npm install --no-save sharp
+      - run: npm install --no-save sharp@0.35.4
         if: env.FETCH_TEXTURES == 'true'
       - run: npm run textures:fetch -- --only Earth,Moon
         if: env.FETCH_TEXTURES == 'true'
+      - run: npm run textures:check -- Earth,Moon
+        if: env.FETCH_TEXTURES == 'true'
+      - run: npm test
+        if: env.FETCH_TEXTURES == 'true'
+      - run: npm run missions:fetch
+        if: env.BAKE_MISSIONS == 'true'
       - name: Assemble site
         run: |
           mkdir _site

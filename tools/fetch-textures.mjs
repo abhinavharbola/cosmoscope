@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile, stat, readdir, rename } from "node:fs/promises";
+import { mkdir, readFile, writeFile, stat, readdir, rename, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -41,6 +42,18 @@ async function findOriginal(base) {
   return hit ? path.join(originals, hit) : null;
 }
 
+async function verify(file, spec) {
+  if (!spec.sha256) {
+    console.warn(`  warning: no sha256 pinned for ${spec.product}`);
+    return;
+  }
+  const got = createHash("sha256").update(await readFile(file)).digest("hex");
+  if (got !== String(spec.sha256).toLowerCase()) {
+    await rm(file, { force: true });
+    throw new Error(`sha256 mismatch for ${spec.url}: expected ${spec.sha256}, got ${got}`);
+  }
+}
+
 async function download(url, base) {
   const ext = path.extname(new URL(url).pathname).toLowerCase();
   const target = path.join(originals, `${base}${EXTS.includes(ext) ? ext : ".jpg"}`);
@@ -60,7 +73,9 @@ async function acquire(id, slot, spec) {
     throw new Error(`No download URL. Get "${spec.product}" and save it as out/originals/${base}.tif, .jpg or .png`);
   }
   console.log(`  downloading ${spec.url}`);
-  return download(spec.url, base);
+  const file = await download(spec.url, base);
+  await verify(file, spec);
+  return file;
 }
 
 async function convert(sharp, file, id, slot, wanted) {
