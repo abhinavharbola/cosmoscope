@@ -5,6 +5,14 @@ const ROUTES = {
 };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_SPAN_DAYS = { "/neo/rest/v1/feed": 7, "/DONKI/FLR": 31 };
+const DAY_MS = 86400000;
+
+function validDate(v) {
+  if (!DATE.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v;
+}
 
 function allowedOrigins(env) {
   return String(env.ALLOW_ORIGIN || "")
@@ -51,8 +59,16 @@ export async function handle(request, env, fetchImpl = fetch) {
   const target = new URL(`https://api.nasa.gov${url.pathname}`);
   for (const [k, v] of url.searchParams) {
     if (!allowed.includes(k)) continue;
-    if (!DATE.test(v)) return respond("Bad request", 400, cors);
+    if (!validDate(v)) return respond("Bad request", 400, cors);
     target.searchParams.set(k, v);
+  }
+  const maxSpan = MAX_SPAN_DAYS[url.pathname];
+  if (maxSpan) {
+    const [from, to] = allowed.map((k) => target.searchParams.get(k));
+    if (from && to) {
+      const span = (Date.parse(to) - Date.parse(from)) / DAY_MS;
+      if (span < 0 || span > maxSpan) return respond("Bad request", 400, cors);
+    }
   }
   target.searchParams.set("api_key", env.NASA_API_KEY);
 

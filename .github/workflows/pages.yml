@@ -2,6 +2,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
   pages: write
@@ -17,9 +18,30 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
+    env:
+      NASA_PROXY_URL: ${{ vars.NASA_PROXY_URL }}
+      FETCH_TEXTURES: ${{ vars.FETCH_TEXTURES }}
     steps:
       - uses: actions/checkout@v4
-      - run: mkdir _site && cp -r index.html src textures vendor _site/
+      - uses: actions/setup-node@v4
+        if: env.FETCH_TEXTURES == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.FETCH_TEXTURES == 'true'
+      - run: npm install --no-save sharp
+        if: env.FETCH_TEXTURES == 'true'
+      - run: npm run textures:fetch -- --only Earth,Moon
+        if: env.FETCH_TEXTURES == 'true'
+      - name: Assemble site
+        run: |
+          mkdir _site
+          cp -r index.html src textures vendor _site/
+          if [ -n "$NASA_PROXY_URL" ]; then
+            sed -i "s|<meta name=\"nasa-proxy\" content=\"\">|<meta name=\"nasa-proxy\" content=\"${NASA_PROXY_URL}\">|" _site/index.html
+            grep -q "content=\"${NASA_PROXY_URL}\"" _site/index.html
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -1,9 +1,10 @@
 name: Browser smoke tests
 on:
-  push:
-    branches-ignore: [main]
   pull_request:
   workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   smoke:
     runs-on: ubuntu-latest
