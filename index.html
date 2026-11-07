@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cosmos</title>
 <meta name="description" content="A solar system you can scrub through time, driven by real ephemerides and NASA data.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-cHh7MYZdv5A6xXa8Wl5KJw0QCccauTtFIkXpnACdC0c='; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.nasa.gov; base-uri 'none'; form-action 'none'">
 <meta name="nasa-proxy" content="">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305070d'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23f2b04a'/%3E%3Cellipse cx='16' cy='16' rx='13' ry='4.5' fill='none' stroke='%23e9e4d8' stroke-width='1.4' transform='rotate(-20 16 16)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -143,55 +144,6 @@
 <pre id="diag" class="mono" hidden></pre>
 
 <script type="module" src="src/main.js"></script>
-<script>
-(function () {
-  window.cosmosFatal = function (title, detail) {
-    var f = document.getElementById("fatal");
-    if (!f || f.dataset.shown) return;
-    f.dataset.shown = "1";
-    f.textContent = "";
-    var box = document.createElement("div");
-    var mark = document.createElement("div");
-    mark.className = "intro-mark";
-    mark.textContent = "Cosmos";
-    var p = document.createElement("p");
-    p.textContent = title;
-    box.appendChild(mark);
-    box.appendChild(p);
-    if (detail) {
-      var d = document.createElement("p");
-      d.className = "dim mono";
-      d.textContent = detail;
-      box.appendChild(d);
-    }
-    f.appendChild(box);
-    f.hidden = false;
-  };
-  function early(message) {
-    if (!window.cosmosReady) window.cosmosFatal("Cosmos failed to start.", message);
-  }
-  window.addEventListener("error", function (e) {
-    early(e && e.message);
-  });
-  window.addEventListener("unhandledrejection", function (e) {
-    early(e && e.reason && e.reason.message);
-  });
-  var entry = document.querySelector('script[type="module"]');
-  if (entry) {
-    entry.addEventListener("error", function () {
-      early("A required script could not be loaded. Check your connection and any content blockers.");
-    });
-  }
-  function watchdog() {
-    if (window.cosmosReady) return;
-    if (document.hidden) {
-      setTimeout(watchdog, 5000);
-      return;
-    }
-    early("Startup took too long.");
-  }
-  setTimeout(watchdog, 30000);
-})();
-</script>
+<script src="src/boot.js"></script>
 </body>
 </html>
