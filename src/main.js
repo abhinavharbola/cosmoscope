@@ -9,7 +9,8 @@ import { readStore, writeStore } from "./storage.js";
 import { almanac } from "./almanac.js";
 import { createRuler } from "./ruler.js";
 import { createDispatch } from "./dispatch.js";
-import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, formatGravity, formatMass, createClock } from "./format.js";
+import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, formatGravity, formatMass, createClock, shortDate } from "./format.js";
+import { KIND_LABEL, DEFAULT_SOURCE, groupByKind } from "./missions.js";
 import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
 
 const $ = (id) => document.getElementById(id);
@@ -239,6 +240,7 @@ const toggles = {
   orbits: $("btn-orbits"),
   labels: $("btn-labels"),
   quality: $("btn-quality"),
+  missions: $("btn-missions"),
 };
 
 function cycleQuality() {
@@ -261,6 +263,10 @@ function toggleOrbits() {
 
 function toggleLabels() {
   world.state.showLabels = !world.state.showLabels;
+}
+
+function toggleMissions() {
+  world.state.showMissions = !world.state.showMissions;
 }
 
 let diagOn = false;
@@ -293,6 +299,7 @@ function toggleDiag() {
 toggles.sizes.addEventListener("click", toggleSizes);
 toggles.orbits.addEventListener("click", toggleOrbits);
 toggles.labels.addEventListener("click", toggleLabels);
+toggles.missions.addEventListener("click", toggleMissions);
 toggles.quality.addEventListener("click", cycleQuality);
 
 let pulseActive = false;
@@ -349,6 +356,7 @@ helpEl.addEventListener("click", (e) => {
 
 const navButtons = {};
 const navAU = {};
+const missionRows = {};
 
 const viewsRow = document.createElement("div");
 viewsRow.className = "views";
@@ -378,6 +386,47 @@ INDEX_IDS.forEach((id) => {
   navAU[id] = b.querySelector(".au");
 });
 
+const missionEl = document.createElement("div");
+missionEl.className = "index-list mission-list";
+missionEl.hidden = true;
+$("index").appendChild(missionEl);
+
+function buildMissionIndex(objects) {
+  for (const id of Object.keys(missionRows)) {
+    delete navButtons[id];
+    delete navAU[id];
+    delete missionRows[id];
+  }
+  missionEl.textContent = "";
+  missionEl.hidden = objects.length === 0;
+  const head = document.createElement("div");
+  head.className = "index-head cap";
+  head.textContent = "Missions and small bodies";
+  if (objects.length) missionEl.appendChild(head);
+  for (const group of groupByKind(Object.fromEntries(objects.map((o) => [o.id, o])))) {
+    const sub = document.createElement("div");
+    sub.className = "index-sub";
+    sub.textContent = group.label === "Asteroid" ? "Asteroids" : group.label === "Comet" ? "Comets" : group.label;
+    missionEl.appendChild(sub);
+    for (const o of group.items) {
+      const b = document.createElement("button");
+      b.className = "body-row craft";
+      const name = document.createElement("span");
+      name.textContent = o.name;
+      const au = document.createElement("span");
+      au.className = "au";
+      b.append(name, au);
+      b.addEventListener("click", () => focusOn(o.id));
+      missionEl.appendChild(b);
+      navButtons[o.id] = b;
+      navAU[o.id] = au;
+      missionRows[o.id] = b;
+    }
+  }
+  const id = world.state.focus;
+  if (navButtons[id]) navButtons[id].classList.add("active");
+}
+
 const KEY_MAP = { m: "Moon", i: "Inner", o: "Overview" };
 ORDER.forEach((id, i) => {
   KEY_MAP[String(i)] = id;
@@ -389,8 +438,83 @@ function row(label, value, opts = {}) {
   return `<tr${opts.extra ? ' class="x"' : ""}><td>${label}</td><td${opts.id ? ` id="${opts.id}"` : ""}>${value}</td></tr>`;
 }
 
+function renderCraftPlate(id) {
+  const plate = $("plate");
+  const cr = world.craft[id];
+  const d = cr.data;
+  plate.hidden = false;
+  plate.style.animation = "none";
+  void plate.offsetWidth;
+  plate.style.animation = "";
+  plate.scrollTop = 0;
+  $("plate-name").textContent = d.name;
+  $("plate-type").textContent = d.launch ? `${KIND_LABEL[d.kind]}, launched ${d.launch}` : KIND_LABEL[d.kind];
+  plate.querySelector(".meter-wrap").hidden = true;
+  const rows = [
+    row("Status", "", { id: "live-status" }),
+    row("Distance from Sun", "", { id: "live-sun" }),
+    row("Distance from Earth", "", { id: "live-earth" }),
+    row("Speed around the Sun", "", { id: "live-speed" }),
+    row("Data window", `${shortDate(cr.track.startMs)} to ${shortDate(cr.track.endMs)}`, { extra: true }),
+    row("Stored samples", String(cr.track.count), { extra: true }),
+  ];
+  if (d.errorAU !== null) rows.push(row("Interpolation error", `under ${fmtNum(d.errorAU * AU_KM, 2)} km`, { extra: true }));
+  if (d.target) rows.push(row("Horizons target", esc(d.target), { extra: true }));
+  rows.push(row("Position model", "Interpolated JPL trajectory", { extra: true }));
+  $("plate-table").innerHTML = rows.join("");
+  $("plate-facts").textContent = d.facts || "";
+  applyMore();
+  renderCraftSource(id);
+}
+
+function renderCraftSource(id) {
+  const cr = world.craft[id];
+  if (!cr) return;
+  const src = world.state.missionSource || DEFAULT_SOURCE;
+  const gen = world.state.missionGenerated;
+  setHTML(
+    $("plate-src"),
+    `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.name)}</a>${gen ? `, retrieved ${esc(shortDate(gen))}` : ""}. ` +
+      `Positions are interpolated between ${cr.track.count} stored samples and are not a live feed. ` +
+      (src.citation ? `Cite: ${esc(src.citation)}.` : "")
+  );
+}
+
+function updateCraftLive(id) {
+  const cr = world.craft[id];
+  if (!cr) return;
+  const earth = world.bodies.Earth;
+  const out = (name, text) => {
+    const el = $(name);
+    if (el) setText(el, text);
+  };
+  if (!cr.active) {
+    out("live-status", sim.ms < cr.track.startMs ? "Before the data window" : "After the data window");
+    out("live-sun", "n/a");
+    out("live-earth", "n/a");
+    out("live-speed", "n/a");
+    setText($("plate-light"), "No trajectory data for this date.");
+    return;
+  }
+  const sunAU = distanceAU(cr.pos);
+  const earthAU = separationAU(cr.pos, earth.pos);
+  out("live-status", "Tracked");
+  out("live-sun", `${formatAU(sunAU)} AU`);
+  out("live-earth", `${formatAU(earthAU)} AU`);
+  out("live-speed", `${fmtNum(cr.track.speedKmS(sim.ms), 4)} km/s`);
+  setText(
+    $("plate-light"),
+    `Sunlight takes ${formatDuration(sunAU / C_AU_S)} to arrive. A signal to Earth takes ${formatDuration(earthAU / C_AU_S)}.`
+  );
+}
+
 function renderPlate(id) {
   const plate = $("plate");
+  if (has(world.craft, id)) {
+    renderCraftPlate(id);
+    return;
+  }
+  plate.querySelector(".meter-wrap").hidden = false;
   const d = has(ALL, id) ? ALL[id] : null;
   if (!d) {
     plate.hidden = true;
@@ -470,7 +594,7 @@ function renderSource(id) {
 }
 
 function focusOn(id, options = {}) {
-  if (!has(VIEWS, id) && !has(world.bodies, id)) return;
+  if (!has(VIEWS, id) && !has(world.bodies, id) && !has(world.craft, id)) return;
   if (!options.eclipse && restoreTrueScale !== null) {
     world.setTrueScale(restoreTrueScale);
     restoreTrueScale = null;
@@ -478,7 +602,7 @@ function focusOn(id, options = {}) {
   world.setFocus(id, options);
   Object.entries(navButtons).forEach(([k, b]) => b.classList.toggle("active", k === id));
   renderPlate(id);
-  document.title = has(VIEWS, id) ? "Cosmos" : `${id} | Cosmos`;
+  document.title = has(VIEWS, id) ? "Cosmos" : `${has(world.craft, id) ? world.craft[id].data.name : id} | Cosmos`;
   syncFlight();
 }
 
@@ -492,6 +616,10 @@ function syncFlight() {
 
 function updateLive() {
   const id = world.state.focus;
+  if (has(world.craft, id)) {
+    updateCraftLive(id);
+    return;
+  }
   const d = has(ALL, id) ? ALL[id] : null;
   if (!d) return;
   if (id === "Sun") return;
@@ -581,6 +709,9 @@ function renderDock() {
   set(toggles.sizes, s.trueScale, "Planet size", s.trueScale ? "True scale" : "Exaggerated");
   set(toggles.orbits, s.showOrbits, "Orbit trails", s.showOrbits ? "On" : "Off");
   set(toggles.labels, s.showLabels, "Labels", s.showLabels ? "On" : "Off");
+  const haveMissions = Object.keys(world.craft).length > 0;
+  toggles.missions.hidden = !haveMissions;
+  if (haveMissions) set(toggles.missions, s.showMissions, "Missions and small bodies", s.showMissions ? "On" : "Off");
   const tiers = world.textureTiers();
   toggles.quality.hidden = tiers.length < 2;
   if (tiers.length > 1) set(toggles.quality, s.textureQuality !== "2k", "Texture detail", s.textureQuality);
@@ -596,6 +727,10 @@ function renderIndex() {
   for (const m of MOONS) {
     const parent = world.bodies[m.parent];
     if (parent) setText(navAU[m.id], `${formatAU(distanceAU(parent.pos))} AU`);
+  }
+  for (const id of Object.keys(world.craft)) {
+    const cr = world.craft[id];
+    if (navAU[id]) setText(navAU[id], cr.active ? `${formatAU(distanceAU(cr.pos))} AU` : "no data");
   }
 }
 
@@ -645,7 +780,7 @@ window.addEventListener("keyup", (e) => {
 });
 
 function readHash(fromChange = false) {
-  const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f));
+  const h = parseHash(location.hash, (f) => has(VIEWS, f) || has(world.bodies, f) || has(world.craft, f));
   if (h.ms !== null) sim.ms = h.ms;
   else if (fromChange) sim.ms = Date.now();
   sim.scale = h.scale !== null ? h.scale : SCALE_DEFAULT;
@@ -657,6 +792,7 @@ function readHash(fromChange = false) {
   }
   world.state.showOrbits = h.orbits;
   world.state.showLabels = h.labels;
+  world.state.showMissions = h.missions;
   return h.focus;
 }
 
@@ -668,7 +804,9 @@ function writeHash() {
     trueScale: world.state.trueScale,
     orbits: world.state.showOrbits,
     labels: world.state.showLabels,
+    missions: world.state.showMissions,
   });
+  if (pendingFocus) return;
   if (h !== lastHash) {
     lastHash = h;
     try {
@@ -686,7 +824,12 @@ window.addEventListener("hashchange", () => {
   focusOn(focus || "Overview");
 });
 
+let pendingFocus = null;
 const startFocus = readHash();
+if (!startFocus) {
+  const wanted = new URLSearchParams(location.hash.replace(/^#/, "")).get("f");
+  if (wanted && /^[A-Za-z][A-Za-z0-9]{0,31}$/.test(wanted) && !has(VIEWS, wanted) && !has(world.bodies, wanted)) pendingFocus = wanted;
+}
 setScale(sim.scale);
 renderPlate("Overview");
 navButtons.Overview.classList.add("active");
@@ -699,6 +842,17 @@ function hideIntro() {
   intro.classList.add("gone");
   setTimeout(() => intro.remove(), 1500);
 }
+
+world
+  .loadMissions()
+  .then((list) => {
+    buildMissionIndex(list);
+    if (pendingFocus && has(world.craft, pendingFocus) && world.state.focus === "Overview") focusOn(pendingFocus);
+  })
+  .catch((err) => console.warn("Missions index failed", err))
+  .finally(() => {
+    pendingFocus = null;
+  });
 
 world
   .loadTextures()
@@ -766,6 +920,7 @@ function step(now) {
     renderIndex();
     updateLive();
     if (has(ALL, world.state.focus)) renderSource(world.state.focus);
+    else if (has(world.craft, world.state.focus)) renderCraftSource(world.state.focus);
     if (diagOn) renderDiag();
   }
   if (now - hashTick > 1000) {

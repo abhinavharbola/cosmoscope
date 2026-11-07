@@ -43,7 +43,7 @@ test.describe("session", () => {
   });
 
   test("the index lists every body", async () => {
-    const rows = page.locator("#index .body-row");
+    const rows = page.locator("#index .body-row:not(.craft)");
     await expect(rows).toHaveCount(BODIES.length);
     const names = await rows.locator("span:first-child").allTextContents();
     expect(names.sort()).toEqual([...BODIES].sort());
@@ -51,7 +51,7 @@ test.describe("session", () => {
 
   for (const id of BODIES) {
     test(`index click focuses ${id}, renders it and the cursor picks it`, async () => {
-      const row = page.locator("#index .body-row", { has: page.locator(`span:first-child:text-is("${id}")`) });
+      const row = page.locator("#index .body-row:not(.craft)", { has: page.locator(`span:first-child:text-is("${id}")`) });
       await row.click();
       await expect(row).toHaveClass(/active/);
       await expect(page.locator("#plate")).toBeVisible();

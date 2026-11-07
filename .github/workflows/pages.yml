@@ -37,7 +37,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir _site
-          cp -r index.html src textures vendor _site/
+          cp -r index.html src textures vendor data _site/
           if [ -n "$NASA_PROXY_URL" ]; then
             node tools/inject-proxy.mjs _site/index.html
           fi

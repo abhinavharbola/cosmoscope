@@ -80,6 +80,9 @@ button:focus:not(:focus-visible) { outline: none; }
 
 .label:hover, .label.hover { color: #fff; }
 .label.active { color: var(--amber); }
+.label.craft { font-size: 10px; letter-spacing: 0.1em; color: rgba(160, 205, 235, 0.72); }
+.label.craft:hover, .label.craft.hover { color: #fff; }
+.label.craft.active { color: var(--amber); }
 
 #left {
   position: fixed;
@@ -211,6 +214,18 @@ button:focus:not(:focus-visible) { outline: none; }
 .body-row:hover .au, .body-row.active .au { opacity: 1; }
 
 .index-list { display: flex; flex-direction: column; margin-top: 8px; }
+.mission-list { margin-top: 18px; }
+.index-head { padding: 0 0 4px 12px; }
+.index-sub {
+  padding: 8px 0 2px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.body-row.craft { font-size: 12px; color: rgba(233, 228, 216, 0.6); }
+.body-row.craft.active { color: var(--amber); border-left-color: var(--amber); }
 
 #dispatch-toggle {
   position: fixed;

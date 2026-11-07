@@ -131,3 +131,113 @@ test("eclipse moments fly in and shade only at true scale", () => {
   world.setFocus("Overview", {});
   assert.equal(world.state.eclipseView, false);
 });
+
+const { buildFixtureCatalog, buildFixtureText } = await import("./missions-fixture.mjs");
+const { helioPosition, separationAU } = await import("../src/ephemeris.js");
+
+const MISSION_MS = Date.parse("2021-03-01T00:00:00Z");
+const settle = (ms, scale = 3600) => frame(ms, scale, 3000);
+
+test("a loaded mission tracks the ephemeris and is inactive outside its data window", () => {
+  const list = world.setMissions(buildFixtureCatalog());
+  assert.equal(list.length, 1);
+  assert.deepEqual(Object.keys(world.craft), ["TestProbe"]);
+  world.setFocus("Overview", {});
+  frame(MISSION_MS);
+  const cr = world.craft.TestProbe;
+  assert.equal(cr.active, true);
+  assert.ok(separationAU(cr.pos, helioPosition("Mars", MISSION_MS)) < 3e-4);
+  assert.equal(cr.marker.visible, true);
+  frame(Date.parse("2019-01-01T00:00:00Z"));
+  assert.equal(cr.active, false);
+  assert.equal(cr.marker.visible, false);
+  assert.equal(cr.label.style.display, "none");
+  assert.ok(cr.pos.every(finite));
+});
+
+test("focusing a mission centres the camera on it and survives scale and toggle changes", () => {
+  world.setFocus("TestProbe", {});
+  settle(MISSION_MS);
+  settle(MISSION_MS);
+  const cr = world.craft.TestProbe;
+  assert.equal(world.state.focus, "TestProbe");
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(world.state.center[i] - cr.pos[i]) < 1e-9);
+  assert.ok(Math.abs(cr.sx - 500) < 2 && Math.abs(cr.sy - 320) < 2, `${cr.sx} ${cr.sy}`);
+  assert.equal(cr.shown, true);
+  world.setTrueScale(true);
+  frame(MISSION_MS);
+  world.setTrueScale(false);
+  world.state.showOrbits = false;
+  frame(MISSION_MS);
+  assert.equal(cr.line.visible, false);
+  world.state.showOrbits = true;
+  world.state.showMissions = false;
+  frame(MISSION_MS);
+  assert.equal(cr.marker.visible, false);
+  assert.equal(cr.line.visible, false);
+  assert.equal(cr.label.style.display, "none");
+  world.state.showMissions = true;
+  frame(MISSION_MS);
+  assert.equal(cr.marker.visible, true);
+  assert.ok(world.camera.position.toArray().every(finite));
+});
+
+test("mission trail colors are only rewritten when the head sample changes", () => {
+  const cr = world.craft.TestProbe;
+  frame(MISSION_MS, 1);
+  const before = cr.line.geometry.attributes.color.version;
+  frame(MISSION_MS, 1);
+  frame(MISSION_MS, 1);
+  assert.equal(cr.line.geometry.attributes.color.version, before);
+  frame(MISSION_MS + 200 * 86400000, 1);
+  assert.ok(cr.line.geometry.attributes.color.version > before);
+});
+
+test("a mission id that collides with a body is ignored", () => {
+  const cat = buildFixtureCatalog();
+  cat.objects.Earth = { ...cat.objects.TestProbe, id: "Earth" };
+  cat.objects.Phobos = { ...cat.objects.TestProbe, id: "Phobos" };
+  const list = world.setMissions(cat);
+  assert.deepEqual(list.map((o) => o.id), ["TestProbe"]);
+  assert.equal(world.bodies.Earth.data.id, "Earth");
+});
+
+test("loadMissions reads a catalog, and a missing or foreign file yields an empty list", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const text = buildFixtureText();
+    globalThis.fetch = async () => new Response(text, { status: 200 });
+    const list = await world.loadMissions("data/missions.json");
+    assert.deepEqual(list.map((o) => o.id), ["TestProbe"]);
+    assert.ok(world.state.missionGenerated > 0);
+
+    globalThis.fetch = async () => new Response(JSON.stringify({ version: 2, bodies: {} }), { status: 200 });
+    assert.deepEqual(await world.loadMissions(), []);
+    assert.deepEqual(Object.keys(world.craft), []);
+
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      globalThis.fetch = async () => new Response("nope", { status: 404 });
+      assert.deepEqual(await world.loadMissions(), []);
+      globalThis.fetch = async () => {
+        throw new Error("offline");
+      };
+      assert.deepEqual(await world.loadMissions(), []);
+    } finally {
+      console.warn = warn;
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("clearing missions while one is focused falls back to the overview", () => {
+  world.setMissions(buildFixtureCatalog());
+  world.setFocus("TestProbe", {});
+  frame(MISSION_MS);
+  world.setMissions({ source: null, generated: null, objects: {} });
+  assert.equal(world.state.focus, "Overview");
+  assert.equal(w.document.querySelectorAll("#labels .label.craft").length, 0);
+  frame(MISSION_MS);
+});

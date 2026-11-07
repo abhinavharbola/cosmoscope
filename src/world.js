@@ -13,6 +13,7 @@ import { crossingSeconds } from "./pulse.js";
 import { VIEWS, OVERVIEW_DIST } from "./views.js";
 import { eclipseSlot, updateEclipseUniforms } from "./shadows.js";
 import { MOON_SYSTEMS, moonDisplayDistance } from "./moonlayout.js";
+import { createTrack, pathPoints, pathHead, trailAlpha, trailSpanMs, loadCatalog } from "./missions.js";
 
 const ART_BASE = 0.035;
 const PULSE_MAX_AU = 120;
@@ -70,10 +71,14 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   scene.add(sky.object);
 
   const bodies = {};
+  const craft = Object.create(null);
   const state = {
     trueScale: false,
     showOrbits: true,
     showLabels: true,
+    showMissions: true,
+    missionSource: null,
+    missionGenerated: null,
     focus: "Overview",
     center: [0, 0, 0],
     trans: null,
@@ -224,6 +229,117 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   buildBody(SUN, true);
   PLANETS.forEach((p) => buildBody(p));
   MOONS.forEach((m) => buildBody(m));
+
+  const CRAFT_PATH_POINTS = 2400;
+  const CRAFT_LABEL_GAP = 26;
+
+  function buildCraft(entry) {
+    const track = createTrack(entry);
+    const path = pathPoints(entry, CRAFT_PATH_POINTS);
+    const line = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
+    );
+    line.frustumCulled = false;
+    const col = new Float32Array(path.ms.length * 4);
+    line.geometry.setAttribute("position", new THREE.BufferAttribute(path.pts, 3));
+    line.geometry.setAttribute("color", new THREE.BufferAttribute(col, 4));
+    line.geometry.computeBoundingSphere();
+    scene.add(line);
+
+    const marker = circleSprite(entry.color);
+    marker.scale.set(0.009, 0.009, 1);
+    marker.renderOrder = 10;
+    scene.add(marker);
+
+    const label = document.createElement("button");
+    label.className = "label craft";
+    label.textContent = entry.name;
+    label.addEventListener("click", () => onSelect(entry.id));
+    labelsEl.appendChild(label);
+
+    craft[entry.id] = {
+      data: entry,
+      track,
+      path,
+      line,
+      col,
+      rgb: new THREE.Color(entry.color).lerp(new THREE.Color(0xffffff), 0.15),
+      span: trailSpanMs(entry),
+      head: -1,
+      marker,
+      label,
+      pos: [0, 0, 0],
+      active: false,
+      onScreen: false,
+      shown: false,
+      sx: 0,
+      sy: 0,
+      cd: 0,
+    };
+  }
+
+  function clearCraft() {
+    for (const id of Object.keys(craft)) {
+      const cr = craft[id];
+      scene.remove(cr.line);
+      scene.remove(cr.marker);
+      cr.line.geometry.dispose();
+      cr.line.material.dispose();
+      cr.marker.material.map.dispose();
+      cr.marker.material.dispose();
+      cr.label.remove();
+      delete craft[id];
+    }
+    if (!isView(state.focus) && !Object.hasOwn(bodies, state.focus)) state.focus = "Overview";
+  }
+
+  function setMissions(catalog) {
+    clearCraft();
+    state.missionSource = catalog.source;
+    state.missionGenerated = catalog.generated;
+    for (const entry of Object.values(catalog.objects)) {
+      if (!Object.hasOwn(bodies, entry.id)) buildCraft(entry);
+    }
+    return Object.values(craft).map((c) => c.data);
+  }
+
+  async function loadMissions(url) {
+    try {
+      return setMissions(await loadCatalog(url));
+    } catch (err) {
+      console.warn("Missions unavailable", err);
+      return [];
+    }
+  }
+
+  function updateCraftPath(cr) {
+    const ms = cr.path.ms;
+    const head = pathHead(ms, cr.simMs);
+    if (head === cr.head) return;
+    cr.head = head;
+    const at = ms[head];
+    const col = cr.col;
+    const c = cr.rgb;
+    for (let i = 0; i < ms.length; i++) {
+      col[i * 4] = c.r;
+      col[i * 4 + 1] = c.g;
+      col[i * 4 + 2] = c.b;
+      col[i * 4 + 3] = trailAlpha(at - ms[i], cr.span);
+    }
+    cr.line.geometry.attributes.color.needsUpdate = true;
+  }
+
+  function craftFocusDistance(cr) {
+    return Math.min(30, Math.max(0.02, 0.1 * distanceAU(cr.pos)));
+  }
+
+  function minDistanceFor(id, eclipse = false) {
+    if (eclipse) return 0.001;
+    if (isView(id)) return 0.01;
+    if (Object.hasOwn(craft, id)) return 1e-4;
+    return displayRadius(bodies[id].data) * 1.15;
+  }
 
   const moonRings = {};
   for (const m of MOONS) {
@@ -469,6 +585,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   function desiredDistance(id) {
     if (isView(id)) return VIEWS[id].dist;
     if (state.eclipseView) return 0.006;
+    if (Object.hasOwn(craft, id)) return craftFocusDistance(craft[id]);
     const b = bodies[id];
     const ringFactor = b.data.rings ? 2.4 : 1;
     if (state.trueScale) {
@@ -482,17 +599,13 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   }
 
   function setFocus(id, options = {}) {
-    if (!isView(id) && !Object.hasOwn(bodies, id)) return;
+    if (!isView(id) && !Object.hasOwn(bodies, id) && !Object.hasOwn(craft, id)) return;
     state.focus = id;
     state.eclipseView = !!options.eclipse;
     syncTiers();
     const fromDist = camera.position.length();
     state.trans = { from: state.center.slice(), t0: performance.now(), dur: 2200, fromDist, id };
-    controls.minDistance = options.eclipse
-      ? 0.001
-      : isView(id)
-        ? 0.01
-        : displayRadius(bodies[id].data) * 1.15;
+    controls.minDistance = minDistanceFor(id, !!options.eclipse);
   }
 
   function update(simMs, timeScale, nowMs) {
@@ -525,7 +638,14 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       b._trueOffset = trueOffset;
     }
 
-    const targetPos = isView(state.focus) ? [0, 0, 0] : bodies[state.focus].pos;
+    for (const cr of Object.values(craft)) {
+      cr.simMs = simMs;
+      cr.active = cr.track.inRange(simMs);
+      cr.pos = cr.track.positionAt(simMs);
+    }
+
+    const focusCraft = Object.hasOwn(craft, state.focus) ? craft[state.focus] : null;
+    const targetPos = isView(state.focus) ? [0, 0, 0] : focusCraft ? focusCraft.pos : bodies[state.focus].pos;
 
     if (state.trans) {
       const t = Math.min(1, Math.max(0, (nowMs - state.trans.t0) / state.trans.dur));
@@ -651,10 +771,46 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       }
     }
 
+    const labelled = [];
+    for (const id of Object.keys(bodies)) if (bodies[id].shown) labelled.push(bodies[id]);
+    for (const cr of Object.values(craft)) {
+      const rx = cr.pos[0] - c[0];
+      const ry = cr.pos[1] - c[1];
+      const rz = cr.pos[2] - c[2];
+      const visible = state.showMissions && cr.active;
+      cr.line.position.set(-c[0], -c[1], -c[2]);
+      cr.line.visible = state.showMissions && state.showOrbits;
+      if (cr.line.visible) updateCraftPath(cr);
+      cr.marker.position.set(rx, ry, rz);
+      cr.marker.visible = visible;
+      tmp.set(rx, ry, rz).project(camera);
+      cr.sx = ((tmp.x + 1) / 2) * window.innerWidth;
+      cr.sy = ((1 - tmp.y) / 2) * window.innerHeight;
+      cr.cd = Math.hypot(camera.position.x - rx, camera.position.y - ry, camera.position.z - rz);
+      cr.onScreen = visible && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+      let show = state.showLabels && cr.onScreen;
+      if (show && state.focus !== cr.data.id) {
+        for (const o of labelled) {
+          if (Math.hypot(cr.sx - o.sx, cr.sy - o.sy) < CRAFT_LABEL_GAP) {
+            show = false;
+            break;
+          }
+        }
+      }
+      cr.shown = show;
+      if (show) labelled.push(cr);
+      cr.label.style.display = show ? "block" : "none";
+      if (show) {
+        cr.label.style.transform = `translate(${cr.sx.toFixed(1)}px, ${cr.sy.toFixed(1)}px) translate(-50%, calc(-100% - 12px))`;
+        cr.label.classList.toggle("active", state.focus === cr.data.id);
+        cr.label.classList.toggle("hover", state.hoverId === cr.data.id);
+      }
+    }
+
     glow.position.copy(bodies.Sun.group.position);
     glow.scale.setScalar(bodies.Sun.radius * 7);
     sunLight.position.copy(bodies.Sun.group.position);
-    const lit = isView(state.focus) ? null : state.focus === "Moon" ? bodies.Earth : bodies[state.focus];
+    const lit = isView(state.focus) ? null : focusCraft ? focusCraft : state.focus === "Moon" ? bodies.Earth : bodies[state.focus];
     const lightD = lit && lit.data.id !== "Sun" ? Math.max(0.39, distanceAU(lit.pos)) : 1;
     const wantI = SUN_INTENSITY * Math.pow(1 / lightD, 0.6);
     sunLight.intensity += (wantI - sunLight.intensity) * (1 - Math.exp(-3.6 * frameDt));
@@ -744,7 +900,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const after = displayRadius(focused.data);
       if (before > 0 && after > 0) camera.position.multiplyScalar(after / before);
     }
-    controls.minDistance = isView(state.focus) ? 0.01 : displayRadius(bodies[state.focus].data) * 1.15;
+    controls.minDistance = minDistanceFor(state.focus);
   }
 
   function pick(x, y) {
@@ -762,6 +918,14 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       }
       if (d < Math.max(16, b.sr) && d < nearD) {
         near = id;
+        nearD = d;
+      }
+    }
+    for (const cr of Object.values(craft)) {
+      if (!cr.onScreen) continue;
+      const d = Math.hypot(cr.sx - x, cr.sy - y);
+      if (d < 14 && d < nearD) {
+        near = cr.data.id;
         nearD = d;
       }
     }
@@ -834,6 +998,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
   return {
     state,
     bodies,
+    craft,
     camera,
     controls,
     update,
@@ -843,6 +1008,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     stopPulse,
     setTrueScale,
     loadTextures,
+    setMissions,
+    loadMissions,
     setTextureQuality,
     textureTiers,
     diagnostics,

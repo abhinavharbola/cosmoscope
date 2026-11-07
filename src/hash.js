@@ -18,6 +18,7 @@ export function parseHash(hash, isFocus) {
     trueScale: p.get("z") === "1",
     orbits: p.get("o") !== "0",
     labels: p.get("k") !== "0",
+    missions: p.get("m") !== "0",
   };
 }
 
@@ -32,5 +33,6 @@ export function buildHash(focus, scale, ms, nowMs, flags = {}) {
   if (flags.trueScale) p.set("z", "1");
   if (flags.orbits === false) p.set("o", "0");
   if (flags.labels === false) p.set("k", "0");
+  if (flags.missions === false) p.set("m", "0");
   return p.toString();
 }

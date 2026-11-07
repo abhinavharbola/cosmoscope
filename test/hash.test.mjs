@@ -61,3 +61,14 @@ test("hash carries view toggles", () => {
   assert.equal(plain.orbits, true);
   assert.equal(plain.labels, true);
 });
+
+test("hash carries the missions toggle and craft focus ids", () => {
+  const now = Date.parse("2026-10-31T00:00:00Z");
+  const withCraft = (f) => Object.hasOwn(VIEWS, f) || ids.has(f) || f === "Voyager1";
+  const h = buildHash("Voyager1", 3600, now, now, { missions: false });
+  const back = parseHash(h, withCraft);
+  assert.equal(back.focus, "Voyager1");
+  assert.equal(back.missions, false);
+  assert.equal(parseHash(buildHash("Voyager1", 3600, now, now, { missions: true }), withCraft).missions, true);
+  assert.equal(parseHash("#f=Voyager1", valid).focus, null);
+});
