@@ -25,22 +25,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        if: env.FETCH_TEXTURES == 'true'
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-        if: env.FETCH_TEXTURES == 'true'
+      - name: Install dependencies
+        if: env.FETCH_TEXTURES == 'true' || env.BAKE_MISSIONS == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - run: npm install --no-save sharp@0.35.4
         if: env.FETCH_TEXTURES == 'true'
-      - run: npm run textures:fetch -- --only Earth,Moon
+      - run: npm run textures:fetch -- --only Earth,Moon --require-sha
         if: env.FETCH_TEXTURES == 'true'
       - run: npm run textures:check -- Earth,Moon
         if: env.FETCH_TEXTURES == 'true'
-      - run: npm test
-        if: env.FETCH_TEXTURES == 'true'
       - run: npm run missions:fetch
         if: env.BAKE_MISSIONS == 'true'
+      - run: npm test
+        if: env.FETCH_TEXTURES == 'true' || env.BAKE_MISSIONS == 'true'
+      - run: npx playwright install --with-deps chromium
+        if: env.FETCH_TEXTURES == 'true' || env.BAKE_MISSIONS == 'true'
+      - run: npm run test:browser
+        if: env.FETCH_TEXTURES == 'true' || env.BAKE_MISSIONS == 'true'
+        env:
+          CI: "true"
       - name: Assemble site
         run: |
           mkdir _site
