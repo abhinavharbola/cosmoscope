@@ -24,6 +24,7 @@ const tiers = option("tier", ["2k"]);
 const only = option("only", null);
 const manifestOnly = flag("manifest");
 const force = flag("force");
+const requireSha = flag("require-sha");
 
 for (const t of tiers) {
   if (!WIDTH[t]) {
@@ -44,6 +45,10 @@ async function findOriginal(base) {
 
 async function verify(file, spec) {
   if (!spec.sha256) {
+    if (requireSha) {
+      await rm(file, { force: true });
+      throw new Error(`no sha256 pinned for ${spec.product} and --require-sha is set`);
+    }
     console.warn(`  warning: no sha256 pinned for ${spec.product}`);
     return;
   }

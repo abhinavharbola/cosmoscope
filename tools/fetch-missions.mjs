@@ -43,8 +43,16 @@ async function request(url, fetchImpl) {
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
       const res = await fetchImpl(url, { headers: { "user-agent": "cosmoscope-mission-baker" } });
-      if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = typeof res.text === "function" ? (await res.text()).slice(0, 400) : "";
+        } catch {
+          detail = "";
+        }
+        const client = res.status >= 400 && res.status < 500 && res.status !== 429;
+        throw Object.assign(new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ""}`), { fatal: client });
+      }
       const json = await res.json();
       if (json.error) throw Object.assign(new Error(`Horizons: ${json.error}`), { fatal: true });
       if (typeof json.result !== "string") throw Object.assign(new Error("Horizons reply has no result text"), { fatal: true });

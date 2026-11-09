@@ -1,3 +1,4 @@
+import { AU_KM } from "../src/data.js";
 import { hermiteAt, CATALOG_VERSION, KINDS, DEFAULT_SOURCE } from "../src/missions.js";
 
 export const HORIZONS_API = "https://ssd.jpl.nasa.gov/api/horizons.api";
@@ -6,7 +7,6 @@ export const VEL_DECIMALS = 9;
 export const CHUNK_ROWS = 4000;
 
 const DAY_MS = 86400000;
-const AU_KM = 149597870.7;
 
 const round = (x, d) => Number(x.toFixed(d));
 
@@ -174,7 +174,7 @@ export function encodeObject(cfg, dense, thinned, target) {
     t,
     p,
     v,
-    errorAU: Number(thinned.maxErrAU.toPrecision(3)),
+    errorAU: Math.ceil(thinned.maxErrAU * 1e10) / 1e10,
   };
   if (target) out.target = target;
   if (cfg.color) out.color = cfg.color;
@@ -201,5 +201,5 @@ export function emptyCatalog() {
 }
 
 export function describeError(errorAU) {
-  return `${Math.round(errorAU * AU_KM).toLocaleString("en-US")} km`;
+  return `${Math.ceil(errorAU * AU_KM).toLocaleString("en-US")} km`;
 }
