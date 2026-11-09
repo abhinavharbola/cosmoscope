@@ -79,3 +79,11 @@ test("hash time must be a full ISO stamp", () => {
   assert.equal(parseHash("#t=2020-06-01T12:00:00Z", valid).ms, Date.parse("2020-06-01T12:00:00Z"));
   assert.equal(parseHash("#t=2020-06-01", valid).ms, Date.parse("2020-06-01"));
 });
+
+test("hash times without an offset are read as UTC and scales must be plain numbers", () => {
+  assert.equal(parseHash("#t=2020-06-01T12:00", valid).ms, Date.parse("2020-06-01T12:00:00Z"));
+  assert.equal(parseHash("#t=2020-06-01T12:00:00%2B02:00", valid).ms, Date.parse("2020-06-01T10:00:00Z"));
+  assert.equal(parseHash("#s=60abc", valid).scale, null);
+  assert.equal(parseHash("#s=60", valid).scale, 60);
+  assert.equal(parseHash("#s=1e3", valid).scale, 1000);
+});

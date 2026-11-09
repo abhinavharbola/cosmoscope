@@ -84,3 +84,11 @@ test("center longitude offset shifts u so longitude 0 lands at the image center"
   assert.equal(m.Pluto.centerLon, 0);
   assert.equal(m.Mars.centerLon, 180);
 });
+
+test("secondary slots never fall back to a larger tier than requested", () => {
+  const e = parseManifest({ Moon: { tiers: { "2k": { map: "Moon/2k/map.jpg" }, "4k": { map: "Moon/4k/map.jpg", bump: "Moon/4k/bump.jpg" } } } }).Moon;
+  const at2 = resolveFiles(e, "2k");
+  assert.equal(at2.map.tier, "2k");
+  assert.equal(at2.bump, undefined);
+  assert.equal(resolveFiles(e, "4k").bump.tier, "4k");
+});

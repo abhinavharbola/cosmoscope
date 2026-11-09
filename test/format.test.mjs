@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatUnit, formatMass, formatGravity, fmtNum } from "../src/format.js";
+import { formatUnit, formatMass, formatGravity, fmtNum, fmtCeil } from "../src/format.js";
 
 test("formatUnit never prints a unit boundary value", () => {
   assert.equal(formatUnit(59), "59 s");
@@ -38,4 +38,12 @@ test("formatMass switches to kilograms for small moons", () => {
 test("formatMass uses a normal exponent for the Sun", () => {
   assert.equal(formatMass(1988400), "1.988 x 10<sup>30</sup> kg");
   assert.equal(formatMass(1898), "1898 x 10<sup>24</sup> kg");
+});
+
+test("fmtCeil never rounds an error bound down", () => {
+  assert.equal(fmtCeil(1.449, 2), "1.5");
+  assert.equal(fmtCeil(1.4, 2), "1.4");
+  assert.equal(fmtCeil(1234, 2), "1300");
+  assert.equal(fmtCeil(0, 2), "0");
+  assert.equal(fmtCeil(null, 2), "n/a");
 });

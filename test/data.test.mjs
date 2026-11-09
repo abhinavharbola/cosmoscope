@@ -39,7 +39,7 @@ test("spin sign follows the IAU rate sign of W about the listed pole", () => {
 
 test("moments are verified instants", () => {
   const iso = Object.fromEntries(MOMENTS.map((m) => [m.label, m.iso]));
-  assert.equal(iso["Voyager 1 launch"], "1977-09-05T12:56:01Z");
+  assert.equal(iso["Voyager 1, day after launch"], "1977-09-06T12:00:00Z");
   assert.equal(iso["Apollo 11 lands"], "1969-07-20T20:17:40Z");
   assert.equal(iso["Venus transit, greatest"], "2012-06-06T01:29:36Z");
   assert.equal(iso["Jupiter and Saturn conjunct"], "2020-12-21T18:20:00Z");

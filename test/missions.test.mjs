@@ -20,6 +20,7 @@ import {
   densify,
   thin,
   thinToCap,
+  encodeObject,
   serializeCatalog,
   emptyCatalog,
   CHUNK_ROWS,
@@ -323,4 +324,23 @@ test("the committed catalog parses without dropping entries and stays under the 
   const cfg = JSON.parse(readFileSync(new URL("../tools/missions-sources.json", import.meta.url), "utf8"));
   const known = new Set(cfg.objects.map((o) => o.id));
   for (const id of Object.keys(json.objects)) assert.ok(known.has(id), `${id} is not in missions-sources.json`);
+});
+
+test("an HTTP 4xx reply is not retried and carries the response text", async () => {
+  let n = 0;
+  const fetchImpl = async () => {
+    n += 1;
+    return { ok: false, status: 400, text: async () => "bad COMMAND value", json: async () => ({}) };
+  };
+  await assert.rejects(bakeObject(testConfig(), fetchImpl, 0), /HTTP 400: bad COMMAND value/);
+  assert.equal(n, 1);
+});
+
+test("the recorded error is never smaller than the measured one", () => {
+  const cfg = testConfig();
+  const plan = planChunks(cfg);
+  const parsed = plan.chunks.map((c) => parseVectors(horizonsText("Mars", c.startMs, c.rows, c.stepMs)));
+  const dense = densify(plan.chunks, parsed);
+  const t = thinToCap(dense, cfg.tolAU, cfg.maxSamples);
+  assert.ok(encodeObject(cfg, dense, t, null).errorAU >= t.maxErrAU);
 });
