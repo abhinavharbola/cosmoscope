@@ -4,14 +4,22 @@ export const SCALE_MIN = 1;
 export const SCALE_MAX = 315576000;
 export const SCALE_DEFAULT = 3600;
 
+const NUMBER = /^\d+(\.\d+)?([eE][+-]?\d+)?$/;
 const ISO_STAMP = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+function parseStamp(raw) {
+  if (!ISO_STAMP.test(raw)) return NaN;
+  const zoned = /(Z|[+-]\d{2}:\d{2})$/.test(raw);
+  return Date.parse(raw.includes("T") && !zoned ? `${raw}Z` : raw);
+}
 
 export function parseHash(hash, isFocus) {
   const p = new URLSearchParams(String(hash).replace(/^#/, ""));
   const f = p.get("f");
-  const s = parseFloat(p.get("s"));
+  const rawS = p.get("s") || "";
+  const s = NUMBER.test(rawS) ? parseFloat(rawS) : NaN;
   const rawT = p.get("t") || "";
-  const t = ISO_STAMP.test(rawT) ? Date.parse(rawT) : NaN;
+  const t = parseStamp(rawT);
   return {
     focus: f && isFocus(f) ? f : null,
     scale: Number.isFinite(s) && s >= SCALE_MIN && s <= SCALE_MAX ? s : null,

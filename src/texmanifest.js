@@ -71,6 +71,7 @@ export function resolveFiles(entry, wanted) {
   const out = {};
   for (const slot of SLOTS) {
     for (const tier of order) {
+      if (slot !== "map" && TIERS.indexOf(tier) > w) continue;
       const files = entry.tiers[tier];
       if (files && files[slot]) {
         out[slot] = { file: files[slot], tier };

@@ -9,7 +9,7 @@ import { readStore, writeStore } from "./storage.js";
 import { almanac } from "./almanac.js";
 import { createRuler } from "./ruler.js";
 import { createDispatch } from "./dispatch.js";
-import { formatDuration, formatRate, formatOffset, fmtNum, formatAU, formatGravity, formatMass, createClock, shortDate } from "./format.js";
+import { formatDuration, formatRate, formatOffset, fmtNum, fmtCeil, formatAU, formatGravity, formatMass, createClock, shortDate } from "./format.js";
 import { KIND_LABEL, DEFAULT_SOURCE, groupByKind } from "./missions.js";
 import { nextSolarEclipse, nextLunarEclipse } from "./eclipses.js";
 
@@ -339,7 +339,7 @@ function toggleHelp(force) {
     helpReturn = document.activeElement;
     $("help-card").focus();
   } else if (helpReturn && helpReturn.focus) {
-    helpReturn.focus();
+    if (!helpReturn.closest("[hidden]")) helpReturn.focus();
     helpReturn = null;
   }
 }
@@ -464,7 +464,7 @@ function renderCraftPlate(id) {
     row("Data window", `${shortDate(cr.track.startMs)} to ${shortDate(cr.track.endMs)}`, { extra: true }),
     row("Stored samples", String(cr.track.count), { extra: true }),
   ];
-  if (d.errorAU !== null) rows.push(row("Interpolation error", `under ${fmtNum(d.errorAU * AU_KM, 2)} km`, { extra: true }));
+  if (d.errorAU !== null) rows.push(row("Interpolation error", `under ${fmtCeil(d.errorAU * AU_KM, 2)} km`, { extra: true }));
   if (d.target) rows.push(row("Horizons target", esc(d.target), { extra: true }));
   rows.push(row("Position model", "Interpolated JPL trajectory", { extra: true }));
   $("plate-table").innerHTML = rows.join("");
@@ -562,7 +562,7 @@ function renderPlate(id) {
   if (modelled && d.inclinationDeg !== null && d.inclinationDeg !== undefined) rows.push(row("Inclination", `${d.inclinationDeg} deg`, { extra: true }));
   if (modelled && d.eccentricity !== null && d.eccentricity !== undefined) rows.push(row("Eccentricity", `${d.eccentricity}`, { extra: true }));
   if (d.ringSystem !== null && d.ringSystem !== undefined) rows.push(row("Ring system", d.ringSystem ? "Yes" : "No", { extra: true }));
-  if (d.parent) rows.push(row("Position model", d.source === "keplerian" ? "Circular approximation" : "Ephemeris", { extra: true }));
+  if (d.parent) rows.push(row("Position model", d.source === "keplerian" ? "Illustrative circular orbit" : "Ephemeris", { extra: true }));
   $("plate-table").innerHTML = rows.join("");
   $("plate-facts").textContent = d.facts;
   applyMore();
@@ -753,12 +753,18 @@ document.addEventListener("click", (e) => {
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target && e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (tag === "INPUT" || tag === "TEXTAREA") {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
   const k = e.key;
   if (k === "Escape") {
     if (!helpEl.hidden) toggleHelp(false);
     else if (menusOpen()) closeMenus();
-    else focusOn("Overview");
+    else if (!$("dispatch").hidden) {
+      $("dispatch").hidden = true;
+      $("dispatch-toggle").setAttribute("aria-expanded", "false");
+    } else focusOn("Overview");
     return;
   }
   if (e.repeat) return;

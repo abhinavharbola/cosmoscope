@@ -60,6 +60,14 @@ export function fmtNum(n, sig = 4) {
   return p.toExponential(sig - 1).replace(/\.?0+e/, "e");
 }
 
+export function fmtCeil(n, sig = 2) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "n/a";
+  if (n <= 0) return "0";
+  const exp = Math.floor(Math.log10(n)) - (sig - 1);
+  const unit = 10 ** exp;
+  return fmtNum(Math.ceil(n / unit - 1e-9) * unit, sig);
+}
+
 export function formatGravity(g) {
   if (g === null || g === undefined || !Number.isFinite(g)) return "n/a";
   return g >= 1 ? g.toFixed(1) : fmtNum(g, 2);

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { parseManifest, resolveFiles, surfaceKey, centerLonOffset, MASK_SLOTS } from "./texmanifest.js";
+import { parseManifest, resolveFiles, centerLonOffset, MASK_SLOTS, SLOTS } from "./texmanifest.js";
 
 const channel = typeof window !== "undefined" && typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
 const waiters = [];
@@ -586,5 +586,8 @@ export async function loadSurface(entry, wanted, have = null) {
     disposeMaps(maps);
     return null;
   }
-  return { maps, files, tier: picks.map.tier, key: surfaceKey(entry, wanted) };
+  const key = SLOTS.filter((s) => files[s])
+    .map((s) => `${s}:${files[s]}`)
+    .join("|");
+  return { maps, files, tier: picks.map.tier, key };
 }

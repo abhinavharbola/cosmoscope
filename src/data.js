@@ -530,7 +530,7 @@ export const ORDER = ["Sun", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Sa
 export const INDEX_IDS = ORDER.flatMap((id) => [id, ...MOONS.filter((m) => m.parent === id).map((m) => m.id)]);
 
 export const MOMENTS = [
-  { label: "Voyager 1 launch", iso: "1977-09-05T12:56:01Z", focus: "Overview", scale: 86400 },
+  { label: "Voyager 1, day after launch", iso: "1977-09-06T12:00:00Z", focus: "Overview", scale: 86400 },
   { label: "Apollo 11 lands", iso: "1969-07-20T20:17:40Z", focus: "Moon", scale: 600 },
   { label: "Venus transit, greatest", iso: "2012-06-06T01:29:36Z", focus: "Venus", scale: 3600 },
   { label: "New Horizons at Pluto", iso: "2015-07-14T11:49:00Z", focus: "Pluto", scale: 86400 },

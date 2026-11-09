@@ -123,7 +123,8 @@ export function parseCatalog(raw) {
 }
 
 export async function loadCatalog(url = CATALOG_URL) {
-  const res = await fetch(url, { cache: "no-cache" });
+  const signal = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined;
+  const res = await fetch(url, { cache: "no-cache", signal });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseCatalog(await res.json());
 }

@@ -299,7 +299,7 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     state.missionSource = catalog.source;
     state.missionGenerated = catalog.generated;
     for (const entry of Object.values(catalog.objects)) {
-      if (!Object.hasOwn(bodies, entry.id)) buildCraft(entry);
+      if (!Object.hasOwn(bodies, entry.id) && !isView(entry.id)) buildCraft(entry);
     }
     return Object.values(craft).map((c) => c.data);
   }
@@ -472,6 +472,11 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
           roughness: 1,
         })
       );
+      const cloudEclipse = eclipseUniforms[b.data.id];
+      if (cloudEclipse) {
+        patchShadow(clouds.material, null, cloudEclipse);
+        patched.push(clouds.material);
+      }
       b.tilt.add(clouds);
       b.clouds = clouds;
     }
@@ -779,7 +784,10 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
       const rz = cr.pos[2] - c[2];
       const visible = state.showMissions && cr.active;
       cr.line.position.set(-c[0], -c[1], -c[2]);
-      cr.line.visible = state.showMissions && state.showOrbits;
+      const precision = 1.2e-4 * Math.max(0.1, distanceAU(cr.pos));
+      const craftFade = state.focus === cr.data.id ? smoothstep(precision, precision * 4, camLen) : 1;
+      cr.line.material.opacity = craftFade;
+      cr.line.visible = state.showMissions && state.showOrbits && craftFade > 0.01;
       if (cr.line.visible) updateCraftPath(cr);
       cr.marker.position.set(rx, ry, rz);
       cr.marker.visible = visible;
