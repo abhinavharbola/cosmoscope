@@ -19,7 +19,7 @@ Positions are computed in your browser from an ephemeris and facts come from NAS
 
 Clone the repository and serve the folder over HTTP, since ES modules do not load from `file://`:
 
-    python3 -m http.server 8000
+    python -m http.server 8000
 
 Then open http://localhost:8000. Three.js, astronomy-engine and the fonts are committed, so only the NASA feeds need internet access.
 

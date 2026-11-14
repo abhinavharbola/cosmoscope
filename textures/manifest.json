@@ -1,4 +1,31 @@
 {
   "version": 2,
-  "bodies": {}
+  "bodies": {
+    "Earth": {
+      "credit": "NASA Earth Observatory and Three.js example textures",
+      "license": "Public domain for NASA assets; see Three.js asset attribution for fallback assets",
+      "url": "https://visibleearth.nasa.gov/",
+      "centerLon": 0,
+      "tiers": {
+        "2k": {
+          "map": "Earth/2k/map.jpg",
+          "lights": "Earth/2k/lights.jpg",
+          "cloudMask": "Earth/2k/cloudMask.jpg"
+        }
+      }
+    },
+    "Moon": {
+      "credit": "NASA/GSFC/Arizona State University: LRO LROC WAC color mosaic, LOLA elevation",
+      "license": "Public domain",
+      "url": "https://svs.gsfc.nasa.gov/4720/",
+      "centerLon": 0,
+      "bumpScale": 3,
+      "tiers": {
+        "2k": {
+          "map": "Moon/2k/map.jpg",
+          "bump": "Moon/2k/bump.jpg"
+        }
+      }
+    }
+  }
 }
