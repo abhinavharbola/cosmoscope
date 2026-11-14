@@ -241,3 +241,23 @@ test("clearing missions while one is focused falls back to the overview", () => 
   assert.equal(w.document.querySelectorAll("#labels .label.craft").length, 0);
   frame(MISSION_MS);
 });
+
+test("the camera view can be read back after being set", () => {
+  world.setFocus("Earth", {});
+  frame(Date.parse("2026-11-02T12:00:00Z"));
+  world.setView({ az: 40, el: 25, logDist: 0.3 });
+  const v = world.getView();
+  assert.ok(Math.abs(v.az - 40) < 1e-6, String(v.az));
+  assert.ok(Math.abs(v.el - 25) < 1e-6, String(v.el));
+  assert.ok(Math.abs(v.logDist - 0.3) < 1e-6, String(v.logDist));
+  assert.equal(world.state.trans, null);
+});
+
+test("an out of range camera distance is clamped instead of rejected", () => {
+  world.setFocus("Earth", {});
+  frame(Date.parse("2026-11-02T12:00:00Z"));
+  world.setView({ az: 0, el: 0, logDist: 3 });
+  assert.ok(world.getView().logDist <= Math.log10(400) + 1e-9);
+  world.setView({ az: 0, el: 0, logDist: -8 });
+  assert.ok(world.getView().logDist > -8);
+});

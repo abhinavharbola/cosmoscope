@@ -87,3 +87,24 @@ test("hash times without an offset are read as UTC and scales must be plain numb
   assert.equal(parseHash("#s=60", valid).scale, 60);
   assert.equal(parseHash("#s=1e3", valid).scale, 1000);
 });
+
+test("the camera view round trips through the hash with fixed precision", () => {
+  const h = buildHash("Mars", 60, Date.now(), Date.now(), { view: { az: 30.04, el: -12.36, logDist: 0.7049 } });
+  assert.match(h, /(^|&)v=30_-12\.4_0\.7(&|$)/);
+  const back = parseHash(`#${h}`, valid).view;
+  assert.deepEqual(back, { az: 30, el: -12.4, logDist: 0.7 });
+});
+
+test("a missing or non finite camera view adds nothing to the hash", () => {
+  assert.ok(!buildHash("Mars", 60, Date.now(), Date.now(), {}).includes("v="));
+  assert.ok(!buildHash("Mars", 60, Date.now(), Date.now(), { view: null }).includes("v="));
+  assert.ok(!buildHash("Mars", 60, Date.now(), Date.now(), { view: { az: NaN, el: 0, logDist: 0 } }).includes("v="));
+});
+
+test("malformed or out of range camera views are rejected", () => {
+  for (const bad of ["", "1_2", "a_b_c", "1_2_3_4", "181_0_0", "0_91_0", "0_0_3.5", "0_0_-8.5", "1e2_0_0", "0,0,0"]) {
+    assert.equal(parseHash(`#v=${bad}`, valid).view, null, bad);
+  }
+  assert.deepEqual(parseHash("#v=-180_-90_-8", valid).view, { az: -180, el: -90, logDist: -8 });
+  assert.deepEqual(parseHash("#v=180_90_3", valid).view, { az: 180, el: 90, logDist: 3 });
+});

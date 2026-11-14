@@ -19,7 +19,7 @@ export const moonCount = MOONS.length;
 
 export let state = null;
 
-export const calls = { emit: 0, stop: 0, focus: [], trueScale: [] };
+export const calls = { emit: 0, stop: 0, focus: [], trueScale: [], view: [] };
 
 export function createWorld() {
   const bodies = {};
@@ -97,6 +97,10 @@ export function createWorld() {
     loadTextures: () => Promise.resolve(),
     setTextureQuality() {},
     textureTiers: () => [],
+    getView: () => ({ az: 10, el: 20, logDist: 0.5 }),
+    setView(v) {
+      calls.view.push(v);
+    },
     diagnostics: () => ({ gpu: "x", calls: 0, triangles: 0, degraded: false, textureMs: 1 }),
   };
 }

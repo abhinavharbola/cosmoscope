@@ -5,9 +5,6 @@ const NASA = {
 };
 
 export async function installStubs(page) {
-  await page.route("https://fonts.googleapis.com/**", (route) =>
-    route.fulfill({ status: 200, headers: { "content-type": "text/css" }, body: "" })
-  );
   await page.route("https://api.nasa.gov/**", (route) => {
     const p = new URL(route.request().url()).pathname;
     const body = p.includes("apod") ? NASA.apod : p.includes("neo") ? NASA.neo : NASA.flares;

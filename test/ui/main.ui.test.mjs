@@ -66,6 +66,14 @@ const pause = (ms) => new Promise((r) => realSetTimeout(r, ms));
 
 test.after(() => w.close());
 
+test("the first-run hint shows once and a key press dismisses it for good", () => {
+  assert.equal($("hint").hidden, false);
+  const ev = press(w.document.body, "x");
+  assert.equal($("hint").hidden, true);
+  assert.equal(ev.defaultPrevented, false);
+  assert.equal(w.localStorage.getItem("cosmos_hint"), "1");
+});
+
 test("keyboard handling", () => {
   settle(5);
   assert.equal($("clock-state").textContent, "Live");
@@ -332,3 +340,91 @@ test("a hash that names a craft is accepted once the missions exist, and unknown
 function stubMoonCount() {
   return stub.moonCount;
 }
+
+test("the about dialog opens from the menu, traps Tab both ways, ignores shortcuts and closes on Escape", () => {
+  const before = stub.calls.emit;
+  $("btn-about").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal($("about").hidden, false);
+  assert.equal(w.document.activeElement, $("about-card"));
+  const first = $("about-card").querySelector("a[href]");
+  let ev = press($("about-card"), "Tab");
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(w.document.activeElement, first);
+  press(first, "Tab", { shiftKey: true });
+  assert.equal(w.document.activeElement, $("about-card"));
+  press($("about-card"), "Tab", { shiftKey: true });
+  assert.equal(w.document.activeElement, $("about-close"));
+  press(w.document.body, "l");
+  press(w.document.body, "?");
+  assert.equal(stub.calls.emit, before);
+  assert.equal($("help").hidden, true);
+  press(w.document.body, "Escape");
+  assert.equal($("about").hidden, true);
+});
+
+test("about links open safely in a new tab", () => {
+  for (const a of $("about-card").querySelectorAll("a[href]")) {
+    assert.equal(a.getAttribute("target"), "_blank");
+    assert.match(a.getAttribute("rel"), /noopener/);
+    assert.match(a.getAttribute("href"), /^https:\/\//);
+  }
+});
+
+test("a guided tour steps with the buttons and arrow keys, and Escape leaves it without refocusing", () => {
+  $("dispatch").hidden = true;
+  const buttons = $("tours").querySelectorAll("button");
+  assert.ok(buttons.length >= 3);
+  buttons[0].dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal($("tour").hidden, false);
+  assert.equal($("tour-count").textContent, "1 of 10");
+  assert.equal(stub.calls.focus.at(-1), "Overview");
+  assert.equal($("tour-prev").disabled, true);
+  press(w.document.body, "ArrowRight");
+  assert.equal($("tour-count").textContent, "2 of 10");
+  assert.equal(stub.calls.focus.at(-1), "Mercury");
+  assert.equal($("tour-prev").disabled, false);
+  press(w.document.body, "ArrowLeft");
+  assert.equal($("tour-count").textContent, "1 of 10");
+  assert.equal(stub.calls.focus.at(-1), "Overview");
+  const count = stub.calls.focus.length;
+  press(w.document.body, "Escape");
+  assert.equal($("tour").hidden, true);
+  assert.equal(stub.calls.focus.length, count);
+});
+
+test("the last tour stop reads Finish and closes the tour", () => {
+  $("tours").querySelectorAll("button")[1].dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  const total = Number($("tour-count").textContent.split(" of ")[1]);
+  for (let i = 1; i < total; i++) $("tour-next").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal($("tour-next").textContent, "Finish");
+  assert.equal($("tour").hidden, false);
+  $("tour-next").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal($("tour").hidden, true);
+});
+
+test("an eclipse tour uses true scale and the next ordinary focus restores it", () => {
+  $("tours").querySelectorAll("button")[2].dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal(stub.state.trueScale, true);
+  assert.equal(stub.calls.focus.at(-1), "Earth");
+  $("tour-next").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal(stub.state.trueScale, true);
+  $("dispatch").hidden = true;
+  press(w.document.body, "Escape");
+  assert.equal($("tour").hidden, true);
+  press(w.document.body, "o");
+  assert.equal(stub.state.trueScale, false);
+});
+
+test("the camera view is restored from the hash and written back to it", async () => {
+  w.location.hash = "#f=Mars&s=60&v=30_15_0.7";
+  await pause(50);
+  assert.deepEqual(stub.calls.view.at(-1), { az: 30, el: 15, logDist: 0.7 });
+  const n = stub.calls.view.length;
+  w.location.hash = "#f=Mars&s=60&v=999_15_0.7";
+  await pause(50);
+  assert.equal(stub.calls.view.length, n);
+  w.location.hash = "#s=1";
+  await pause(50);
+  frame(1100);
+  assert.match(w.location.hash, /v=10_20_0\.5/);
+});

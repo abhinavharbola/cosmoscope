@@ -128,6 +128,29 @@ test.describe("session", () => {
     await expect(page.locator("#plate-name")).toHaveText("Mars");
   });
 
+  test("the about dialog opens from the View menu and Escape closes it", async () => {
+    await page.locator("#btn-view").click();
+    await page.locator("#btn-about").click();
+    await expect(page.locator("#about")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#about")).toBeHidden();
+    await expect(page.locator("#plate-name")).toHaveText("Mars");
+  });
+
+  test("a guided tour opens from the Jump menu, advances with the arrow keys and exits with Escape", async () => {
+    await page.locator("#btn-jump").click();
+    await page.locator("#tours button").first().click();
+    await expect(page.locator("#tour")).toBeVisible();
+    await expect(page.locator("#tour-count")).toHaveText("1 of 10");
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("#tour-count")).toHaveText("2 of 10");
+    await expect(page.locator("#plate-name")).toHaveText("Mercury");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#tour")).toBeHidden();
+    await page.keyboard.press("4");
+    await expect(page.locator("#plate-name")).toHaveText("Mars");
+  });
+
   test("view toggles and the NASA dispatch panel respond", async () => {
     const sizes = page.locator("#btn-sizes");
     await page.locator("#btn-view").click();
