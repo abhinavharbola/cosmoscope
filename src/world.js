@@ -886,6 +886,26 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     };
   }
 
+  function getView() {
+    const p = camera.position;
+    const dist = p.length();
+    if (!(dist > 0)) return null;
+    return {
+      az: (Math.atan2(p.x, p.z) * 180) / Math.PI,
+      el: (Math.asin(Math.max(-1, Math.min(1, p.y / dist))) * 180) / Math.PI,
+      logDist: Math.log10(dist),
+    };
+  }
+
+  function setView(v) {
+    const az = (v.az * Math.PI) / 180;
+    const el = (v.el * Math.PI) / 180;
+    const dist = Math.min(controls.maxDistance, Math.max(controls.minDistance, 10 ** v.logDist));
+    camera.position.set(dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el), dist * Math.cos(el) * Math.cos(az));
+    state.trans = null;
+    controls.update();
+  }
+
   function emitPulse(simMs) {
     pulse.emitMs = simMs;
     pulse.logged = new Set();
@@ -1014,6 +1034,8 @@ export function createWorld(canvas, labelsEl, hooks = {}) {
     setFocus,
     emitPulse,
     stopPulse,
+    getView,
+    setView,
     setTrueScale,
     loadTextures,
     setMissions,
