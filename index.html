@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cosmos</title>
 <meta name="description" content="A solar system you can scrub through time, driven by real ephemerides and NASA data.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-cHh7MYZdv5A6xXa8Wl5KJw0QCccauTtFIkXpnACdC0c='; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.nasa.gov; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-cHh7MYZdv5A6xXa8Wl5KJw0QCccauTtFIkXpnACdC0c='; style-src 'self'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.nasa.gov; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#05070d">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cosmos">
+<meta property="og:description" content="A solar system you can scrub through time, driven by real ephemerides and NASA data.">
+<meta name="twitter:card" content="summary">
 <meta name="nasa-proxy" content="">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305070d'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23f2b04a'/%3E%3Cellipse cx='16' cy='16' rx='13' ry='4.5' fill='none' stroke='%23e9e4d8' stroke-width='1.4' transform='rotate(-20 16 16)'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="src/style.css">
 <script type="importmap">
 {
@@ -93,6 +95,10 @@
         <div id="jump" class="pop" hidden>
           <label class="datebox"><span class="cap">Date</span><input id="date-input" type="date" min="1801-01-01" max="2198-12-31"></label>
           <div class="pop-rule"></div>
+          <div class="pop-head cap">Guided tours</div>
+          <div id="tours"></div>
+          <div class="pop-rule"></div>
+          <div class="pop-head cap">Moments</div>
           <div id="moments"></div>
         </div>
       </div>
@@ -106,6 +112,7 @@
           <button id="btn-quality" class="pop-item" title="Surface texture detail for the focused body" hidden></button>
           <div class="pop-rule"></div>
           <button id="btn-help" class="pop-item"><span>Keyboard shortcuts</span><b>?</b></button>
+          <button id="btn-about" class="pop-item"><span>About and credits</span></button>
         </div>
       </div>
       <button id="btn-pulse" class="ghost accent" title="Send a light pulse (L)">Light pulse</button>
@@ -130,10 +137,43 @@
       <dt>V</dt><dd>Orbit trails</dd>
       <dt>K</dt><dd>Labels</dd>
       <dt>D</dt><dd>Diagnostics</dd>
+      <dt>Left, Right</dt><dd>Previous, next tour stop</dd>
     </dl>
     <p class="dim">Click a body or its label to fly to it. Drag to orbit, scroll to zoom.</p>
     <button id="help-close" class="help-close" type="button">Close</button>
   </div>
+</div>
+
+<div id="about" class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
+  <div class="help-card about-card" id="about-card" tabindex="-1">
+    <h3 id="about-title">About Cosmos</h3>
+    <p>A solar system you can scrub through time, from 1801 to 2198. Positions are computed in your browser, and facts come from NASA.</p>
+    <dl>
+      <dt>Positions</dt><dd><a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">astronomy-engine</a>, with illustrative orbits for a few small moons, labelled as such.</dd>
+      <dt>Facts</dt><dd><a href="https://nssdc.gsfc.nasa.gov/planetary/factsheet/" target="_blank" rel="noopener">NASA NSSDC Planetary Fact Sheet</a>, version of 18 March 2025.</dd>
+      <dt>Missions</dt><dd>Spacecraft, comets and asteroids, where shown, are sampled offline from <a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">NASA JPL Horizons</a>. Nothing is requested from JPL while you browse.</dd>
+      <dt>Surfaces</dt><dd>NASA and USGS maps where shown. Anything else is procedural, and the body's plate says so.</dd>
+      <dt>Dispatch</dt><dd>Astronomy Picture of the Day, near-Earth objects and solar flares from <a href="https://api.nasa.gov" target="_blank" rel="noopener">api.nasa.gov</a>.</dd>
+      <dt>Code</dt><dd>Built with <a href="https://threejs.org" target="_blank" rel="noopener">Three.js</a> and astronomy-engine, both MIT licensed. Type is IBM Plex Sans, IBM Plex Mono and Instrument Serif, under the SIL Open Font License 1.1.</dd>
+      <dt>Source</dt><dd><a href="https://github.com/abhinavharbola/cosmoscope" target="_blank" rel="noopener">github.com/abhinavharbola/cosmoscope</a></dd>
+    </dl>
+    <button id="about-close" class="help-close" type="button">Close</button>
+  </div>
+</div>
+
+<aside id="tour" role="region" aria-label="Guided tour" hidden>
+  <div class="tour-head"><span id="tour-title"></span><span id="tour-count" class="mono"></span></div>
+  <p id="tour-text"></p>
+  <div class="tour-actions">
+    <button id="tour-prev" class="ghost" type="button">Back</button>
+    <button id="tour-next" class="ghost accent" type="button">Next</button>
+    <button id="tour-exit" class="ghost" type="button">Exit</button>
+  </div>
+</aside>
+
+<div id="hint" role="status" hidden>
+  <span>Drag to orbit, scroll to zoom, click a body to fly there. Open Jump for guided tours, or press ? for shortcuts.</span>
+  <button id="hint-close" class="ghost" type="button">Got it</button>
 </div>
 
 <div id="intro">
