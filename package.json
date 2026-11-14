@@ -7,6 +7,22 @@
     "node": ">=22"
   },
   "description": "3D solar system with ephemeris-driven orbits, NASA fact sheet data and live NASA feeds",
+  "keywords": [
+    "solar-system",
+    "astronomy",
+    "three.js",
+    "ephemeris",
+    "nasa",
+    "visualization"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhinavharbola/cosmoscope.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abhinavharbola/cosmoscope/issues"
+  },
+  "homepage": "https://abhinavharbola.github.io/cosmoscope/",
   "scripts": {
     "start": "python3 -m http.server 8000",
     "test": "node --test test/*.test.mjs",
